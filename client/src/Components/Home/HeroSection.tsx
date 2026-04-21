@@ -4,6 +4,7 @@ import { Calendar, UserPlus } from "lucide-react";
 import { motion } from "framer-motion";
 import heroImage from "@/assets/psychologist-hero.jpg";
 
+
 const HeroSection = () => {
   return (
     <section className="relative overflow-hidden bg-background-alt">

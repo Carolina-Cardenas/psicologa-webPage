@@ -39,7 +39,7 @@ const Footer = () => {
             </h4>
             <div className="mt-3 flex flex-col gap-2">
               <a href="mailto:contacto@natalycardenas.cl" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
-                <Mail className="h-4 w-4" /> contacto@natalycardenas.cl
+                <Mail className="h-4 w-4" /> contacto@psnatalycardenas@gmail.com
               </a>
               <a href="tel:+56976401578" className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
                 <Phone className="h-4 w-4" /> +56 9 7640 1578

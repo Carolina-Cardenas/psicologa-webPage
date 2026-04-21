@@ -84,11 +84,12 @@ const BookAppointment = () => {
               <div className="text-center">
                 <h1 className="font-heading text-3xl font-bold text-foreground">Elige fecha y hora</h1>
                 <p className="mt-2 text-muted-foreground">
-                  Sesión {modality === "online" ? "en línea" : "presencial"} · 50 minutos
+                  Sesión {modality === "online" ? "en línea" : "presencial"} · 45 minutos
                 </p>
               </div>
-              <div className="mt-8 grid gap-6 md:grid-cols-2">
-                <div className="rounded-xl border bg-card p-4">
+              <div className="mt-8 grid gap-6 md:grid-cols-2 place-items-center">
+
+              <div className="rounded-xl border bg-card p-6 w-fit">
                   <Calendar
                     mode="single"
                     selected={date}
@@ -127,9 +128,11 @@ const BookAppointment = () => {
                       )}
                     </>
                   ) : (
-                    <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                      Selecciona una fecha en el calendario
-                    </div>
+                    <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+                    Selecciona una fecha en el calendario
+                  </div>
+                  
+                  
                   )}
                 </div>
               </div>
@@ -179,7 +182,7 @@ const BookAppointment = () => {
                     </div>
                     <div>
                       <p className="text-sm font-medium text-foreground">Duración</p>
-                      <p className="text-sm text-muted-foreground">50 minutos</p>
+                      <p className="text-sm text-muted-foreground">45 minutos</p>
                     </div>
                   </div>
                 </div>

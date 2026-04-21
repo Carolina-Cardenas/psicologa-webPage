@@ -1,9 +1,9 @@
-import HeroSection from "@/components/home/HeroSection";
-import ServicesSection from "@/components/home/ServicesSection";
-import PricingSection from "@/components/home/PricingSection";
-import ProfileSection from "@/components/home/ProfileSection";
-import TestimonialsSection from "@/components/home/TestimonialsSection";
-import FAQSection from "@/components/home/FAQSection";
+import HeroSection from "@/components/Home/HeroSection";
+import ServicesSection from "@/components/Home/ServicesSection";
+import PricingSection from "@/components/Home/PricingSection";
+import ProfileSection from "@/components/Home/ProfileSection";
+import TestimonialsSection from "@/components/Home/TestimonialsSection";
+import FAQSection from "@/components/Home/FAQSection";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Calendar, ArrowRight } from "lucide-react";

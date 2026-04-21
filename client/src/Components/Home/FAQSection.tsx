@@ -3,7 +3,7 @@ import {
     AccordionContent,
     AccordionItem,
     AccordionTrigger,
-  } from "@/Components/ui/accordion";
+  } from "@/components/ui/accordion";
   import { motion } from "framer-motion";
   
   const faqs = [
@@ -13,7 +13,7 @@ import {
     },
     {
       q: "¿Cuánto dura una sesión?",
-      a: "Cada sesión tiene una duración de 50 minutos. En casos especiales, como terapia de pareja, puede extenderse a 90 minutos.",
+      a: "Cada sesión tiene una duración de 45 minutos. En casos especiales, como terapia de pareja, puede extenderse a 90 minutos.",
     },
     {
       q: "¿Ofrecen sesiones en línea?",
