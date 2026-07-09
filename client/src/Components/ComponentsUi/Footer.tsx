@@ -8,7 +8,7 @@ const Footer = () => {
         <div className="grid gap-8 md:grid-cols-3">
           <div>
             <h3 className="font-heading text-lg font-semibold text-foreground">
-              Psic. Nataly Cárdenas Astudillo
+              Ps. Nataly Cárdenas Astudillo
             </h3>
             <p className="mt-2 text-sm text-muted-foreground">
               Acompañamiento profesional para tu bienestar emocional. Cada paso

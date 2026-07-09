@@ -26,7 +26,7 @@ const TestimonialsSection = () => {
   return (
     <section className="relative overflow-hidden py-20" style={{ backgroundColor: "hsl(188, 9%, 22%)" }}>
       {/* Decorative soft pastel overlays acordes a la paleta */}
-      <div
+      <div 
         className="absolute inset-0 opacity-20"
         style={{
           background:

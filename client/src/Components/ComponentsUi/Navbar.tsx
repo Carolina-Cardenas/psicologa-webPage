@@ -25,7 +25,7 @@ const Navbar = () => {
             <span className="font-heading text-lg text-primary-foreground">P</span>
           </div>
           <span className="font-heading text-xl font-semibold text-foreground">
-            Psic. Nataly Cárdenas
+            Psicologa Nataly Cárdenas
           </span>
         </Link>
 

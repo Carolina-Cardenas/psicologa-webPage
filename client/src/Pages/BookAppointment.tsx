@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { motion, AnimatePresence } from "framer-motion";
@@ -6,28 +6,85 @@ import { format, addDays, isBefore, startOfDay } from "date-fns";
 import { es } from "date-fns/locale";
 import { ArrowLeft, ArrowRight, CheckCircle2, Clock, MapPin, Video, CalendarIcon } from "lucide-react";
 
-const timeSlots = [
-  "09:00", "09:50", "10:40", "11:30",
-  "14:00", "14:50", "15:40", "16:30", "17:20",
-];
+interface AppointmentDetails {
+  _id: string;
+  date: string;
+  time: string;
+  modalidad: string;
+  status: string;
+}
 
-// Mock occupied slots
-const occupiedSlots: Record<string, string[]> = {
-  [format(addDays(new Date(), 1), "yyyy-MM-dd")]: ["09:00", "10:40", "14:00"],
-  [format(addDays(new Date(), 2), "yyyy-MM-dd")]: ["09:50", "15:40"],
-};
 
-const BookAppointment = () => {
+ 
+  const BookAppointment = () => {
   const [step, setStep] = useState(0);
+  const [appointmentDetails, setAppointmentDetails] = useState<AppointmentDetails | null>(null);
   const [modality, setModality] = useState<"online" | "presencial" | null>(null);
   const [date, setDate] = useState<Date | undefined>();
   const [time, setTime] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const dateKey = date ? format(date, "yyyy-MM-dd") : "";
-  const occupied = dateKey ? (occupiedSlots[dateKey] || []) : [];
-  const availableSlots = timeSlots.filter((s) => !occupied.includes(s));
+
+  const [availableSlots, setAvailableSlots] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!date) return;
+
+    const fetchSlots = async () => {
+      const formatted = format(date, "yyyy-MM-dd");
+      const res = await fetch(`http://localhost:4000/api/appointments/available/${formatted}`);
+      const data = await res.json();
+      setAvailableSlots(data);
+    };
+  
+    fetchSlots();
+  }, [date]);
+  
 
   const stepLabels = ["Modalidad", "Fecha y hora", "Confirmación"];
+
+  const handleConfirm = async () => {
+    if (!date || !time || !modality) return;
+  
+    setIsSubmitting(true);
+    
+    
+    const tipoModalidad = modality === "online" ? "en línea" : "presencial";
+  
+    const appointmentData = {
+      date: format(date, "yyyy-MM-dd"),
+      time: time,
+      modality: modality, 
+      patientName: "Carolina Cárdenas", 
+      patientEmail: "carolina.beatriz.cardenas@gmail.com"
+    };
+  
+    try {
+      const res = await fetch("http://localhost:4000/api/appointments/", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(appointmentData),
+      });
+  
+      const data = await res.json();
+  
+      if (res.ok) {
+        setAppointmentDetails(data);
+        setStep(3); 
+      } else {
+     
+        console.log("Error detallado del backend:", data);
+        alert(`Error del Servidor: ${data.message || JSON.stringify(data.errors || data)}`);
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Hubo un fallo de red.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-background-alt px-4 py-12">
@@ -187,24 +244,60 @@ const BookAppointment = () => {
                   </div>
                 </div>
                 <hr className="my-6 border-border" />
-                <Button className="w-full" size="lg" onClick={() => alert("Cita confirmada (conectar al backend)")}>
-                  <CheckCircle2 className="mr-2 h-5 w-5" /> Confirmar cita
-                </Button>
-                <p className="mt-3 text-center text-xs text-muted-foreground">
-                  Recibirás un correo de confirmación con los detalles de tu cita.
-                </p>
-              </div>
-              <div className="mt-6 text-center">
-                <Button variant="ghost" onClick={() => setStep(1)}>
-                  <ArrowLeft className="mr-2 h-4 w-4" /> Cambiar fecha u hora
-                </Button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+               
+                <Button 
+                className="w-full" 
+                size="lg" 
+                onClick={handleConfirm}   
+                disabled={isSubmitting}  
+              >
+                <CheckCircle2 className="mr-2 h-5 w-5" /> 
+                {isSubmitting ? "Procesando..." : "Confirmar cita"} 
+              </Button>
+              <p className="mt-3 text-center text-xs text-muted-foreground">
+                Recibirás un correo de confirmación con los detalles de tu cita.
+              </p>
+            </div>
+            <div className="mt-6 text-center">
+              <Button 
+                variant="ghost" 
+                onClick={() => setStep(1)} 
+                disabled={isSubmitting}   
+              >
+                <ArrowLeft className="mr-2 h-4 w-4" /> Cambiar fecha y hora
+              </Button>
+            </div>
+          </motion.div>
+        )}
+
+        {/* --- PANTALLA DE ÉXITO FINAL (Paso 3) --- */}
+        {step === 3 && appointmentDetails && (
+          <motion.div
+            key="success"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="text-center p-8 space-y-4 bg-white rounded-xl shadow-sm border border-muted"
+          >
+            <CheckCircle2 className="mx-auto h-16 w-16 text-green-500 animate-bounce" />
+            <h2 className="text-2xl font-bold text-gray-900">¡Cita Agendada con Éxito!</h2>
+            <p className="text-muted-foreground">
+              Tu sesión quedó confirmada para el día{" "}
+              <strong>{date ? format(date, "dd 'de' MMMM, yyyy", { locale: es }) : ""}</strong>{" "}
+              a las <strong>{time}</strong> hs en modalidad{" "}
+              <strong>{modality === "online" ? "En línea (videollamada)" : "Presencial"}</strong>.
+            </p>
+            <div className="pt-4">
+              <Button className="mt-2" variant="outline" onClick={() => window.location.reload()}>
+                Agendar otra cita
+              </Button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
-  );
+  </div>
+);
 };
 
 export default BookAppointment;
