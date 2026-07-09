@@ -1,6 +1,6 @@
 import Appointment from "../models/Appointment";
 
-export const getAvailableSlots = async (date: string) => {
+export const getAvailableSlotsService = async (date: string) => {
   const appointments = await Appointment.find({ date: new Date(date) });
 
   const taken = appointments.map((a) => a.time);
