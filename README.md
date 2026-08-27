@@ -52,3 +52,7 @@ Backend API
   |
   v
 MongoDB
+
+Project Structure
+client/
+server/
