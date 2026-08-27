@@ -56,3 +56,38 @@ MongoDB
 Project Structure
 client/
 server/
+
+
+Environment Variables
+
+Environment variables are used for configuration and sensitive credentials.
+
+Sensitive information must never be committed to the repository.
+
+Create the required .env files locally according to the project's configuration.
+
+What I Am Practicing
+
+This project is helping me develop practical experience with:
+
+React application architecture
+TypeScript
+Backend API development
+MongoDB data persistence
+Appointment workflows
+Administrative functionality
+Payment integration
+Form validation
+Real-world business requirements
+Future Improvements
+Improve automated testing
+Improve accessibility
+Improve error handling
+Add additional administrative features
+Improve application monitoring
+Author
+
+Carolina Cárdenas
+
+Junior Full Stack Developer
+Stockholm, Sweden
