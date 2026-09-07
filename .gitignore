@@ -1,10 +1,10 @@
+# Dependencies
+node_modules/
+
 # Environment variables
 .env
 .env.*
 !.env.example
-
-# Dependencies
-node_modules/
 
 # Build
 dist/
@@ -13,3 +13,6 @@ build/
 # Logs
 *.log
 npm-debug.log*
+
+# OS files
+.DS_Store

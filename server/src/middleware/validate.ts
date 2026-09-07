@@ -1,20 +1,18 @@
 import { Request, Response, NextFunction } from "express";
-import { z } from "zod";
+import { ZodType } from "zod";
 
-export const appointmentSchemaVal = z.object({
-  modality: z.enum(["online", "presencial"]),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Formato de fecha debe ser YYYY-MM-DD"),
-  time: z.string(), 
-  patientName: z.string().min(3, "El nombre es obligatorio"),
-  patientEmail: z.string().email("Email inválido"),
-});
+export const validateBody = (schema: ZodType) => {
+  return (req: Request, res: Response, next: NextFunction): Response | void => {
+    const result = schema.safeParse(req.body);
 
-export const validateAppointment = (req: Request, res: Response, next: NextFunction) => {
-  try {
-    // Validamos el body y reemplazamos req.body con los datos limpios
-    req.body = appointmentSchemaVal.parse(req.body);
+    if (!result.success) {
+      return res.status(400).json({
+        message: "Datos de entrada inválidos.",
+        errors: result.error.flatten().fieldErrors,
+      });
+    }
+
+    req.body = result.data;
     next();
-  } catch (error) {
-    res.status(400).json({ message: "Datos de cita inválidos", error });
-  }
+  };
 };
