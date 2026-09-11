@@ -16,6 +16,8 @@ import AdminLogin from "./Pages/AdminLogin";
 import AdminDashboard from "./Pages/AdminDashboard";
 import NotFound from "./Pages/NotFound";
 import ResetPassword from "./Pages/ResetPassword";
+import AdminRecoverPassword from "./Pages/AdminRecoverPassword";
+import AdminResetPassword from "./Pages/AdminResetPassword";
 
 const queryClient = new QueryClient();
 
@@ -43,6 +45,15 @@ const App = () => (
 </Route>
 
             <Route path="/admin/login" element={<AdminLogin />} />
+            <Route
+  path="/admin/recuperar-password"
+  element={<AdminRecoverPassword />}
+/>
+
+<Route
+  path="/admin/reset-password"
+  element={<AdminResetPassword />}
+/>
 
             <Route
               element={<ProtectedRoute allowedRoles={["admin", "psicologa"]} />}
@@ -50,6 +61,7 @@ const App = () => (
               <Route path="/admin" element={<AdminDashboard />} />
             </Route>
           </Route>
+         
           <Route
            path="/reset-password"
             element={<ResetPassword />}
