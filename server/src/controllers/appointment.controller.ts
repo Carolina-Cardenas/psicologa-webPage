@@ -4,7 +4,10 @@ import Appointment from "../models/Appointment";
 import Client from "../models/client";
 
 import { ALL_SLOTS } from "../constants/slots";
-import { sendAppointmentConfirmationEmail } from "../services/email.service";
+
+import {
+  sendAppointmentConfirmationEmail,
+} from "../services/email.service";
 
 const getDayRange = (dateStr: string) => {
   const start = new Date(`${dateStr}T00:00:00.000Z`);
@@ -46,9 +49,14 @@ export const createAppointment = async (
     }
 
     const existingAppointment = await Appointment.findOne({
-      date: { $gte: start, $lte: end },
+      date: {
+        $gte: start,
+        $lte: end,
+      },
       time,
-      status: { $ne: "cancelada" },
+      status: {
+        $ne: "cancelada",
+      },
     });
 
     if (existingAppointment) {
@@ -116,8 +124,13 @@ export const getAvailableSlots = async (
     const { start, end } = getDayRange(date);
 
     const appointments = await Appointment.find({
-      date: { $gte: start, $lte: end },
-      status: { $ne: "cancelada" },
+      date: {
+        $gte: start,
+        $lte: end,
+      },
+      status: {
+        $ne: "cancelada",
+      },
     });
 
     const takenSlots = appointments.map(
@@ -141,35 +154,6 @@ export const getAvailableSlots = async (
   }
 };
 
-export const getAppointmentsByDate = async (
-  req: Request<{ date: string }>,
-  res: Response
-) => {
-  try {
-    const { date } = req.params;
-
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      return res.status(400).json({
-        message: "Formato de fecha inválido.",
-      });
-    }
-
-    const { start, end } = getDayRange(date);
-
-    const appointments = await Appointment.find({
-      date: { $gte: start, $lte: end },
-    });
-
-    return res.json(appointments);
-  } catch (error) {
-    console.error("Error al obtener citas:", error);
-
-    return res.status(500).json({
-      message: "Error al obtener las citas de este día.",
-    });
-  }
-};
-
 export const getMyAppointments = async (
   req: Request,
   res: Response
@@ -186,16 +170,22 @@ export const getMyAppointments = async (
     const appointments = await Appointment.find({
       clientId,
     })
-      .sort({ date: 1, time: 1 })
+      .sort({
+        date: 1,
+        time: 1,
+      })
       .lean();
 
-    return res.json(appointments);
+    return res.status(200).json(appointments);
   } catch (error) {
-    console.error("Error al obtener mis citas:", error);
+    console.error(
+      "Error al obtener mis citas:",
+      error
+    );
 
     return res.status(500).json({
       message: "Error al obtener tus citas.",
-    }); 
+    });
   }
 };
 
@@ -239,10 +229,85 @@ export const cancelMyAppointment = async (
       appointment,
     });
   } catch (error) {
-    console.error("Error al cancelar cita:", error);
+    console.error(
+      "Error al cancelar cita:",
+      error
+    );
 
     return res.status(500).json({
       message: "Error al cancelar la cita.",
+    });
+  }
+};
+
+export const getAllAppointmentsForAdmin = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const appointments = await Appointment.find()
+      .populate(
+        "clientId",
+        "nombre apellidos email telefono pais"
+      )
+      .sort({
+        date: 1,
+        time: 1,
+      })
+      .lean();
+
+    return res.status(200).json(appointments);
+  } catch (error) {
+    console.error(
+      "Error al obtener citas para admin:",
+      error
+    );
+
+    return res.status(500).json({
+      message: "Error al obtener las citas.",
+    });
+  }
+};
+
+export const getAppointmentsByDate = async (
+  req: Request<{ date: string }>,
+  res: Response
+) => {
+  try {
+    const { date } = req.params;
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({
+        message: "Formato de fecha inválido.",
+      });
+    }
+
+    const { start, end } = getDayRange(date);
+
+    const appointments = await Appointment.find({
+      date: {
+        $gte: start,
+        $lte: end,
+      },
+    })
+      .populate(
+        "clientId",
+        "nombre apellidos email telefono pais"
+      )
+      .sort({
+        time: 1,
+      })
+      .lean();
+
+    return res.status(200).json(appointments);
+  } catch (error) {
+    console.error(
+      "Error al obtener citas:",
+      error
+    );
+
+    return res.status(500).json({
+      message: "Error al obtener las citas de este día.",
     });
   }
 };
