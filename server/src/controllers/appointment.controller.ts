@@ -195,6 +195,54 @@ export const getMyAppointments = async (
 
     return res.status(500).json({
       message: "Error al obtener tus citas.",
+    }); 
+  }
+};
+
+export const cancelMyAppointment = async (
+  req: Request<{ id: string }>,
+  res: Response
+) => {
+  try {
+    const clientId = (req as any).user?.id;
+    const { id } = req.params;
+
+    if (!clientId) {
+      return res.status(401).json({
+        message: "Usuario no autenticado.",
+      });
+    }
+
+    const appointment = await Appointment.findOne({
+      _id: id,
+      clientId,
+    });
+
+    if (!appointment) {
+      return res.status(404).json({
+        message: "Cita no encontrada.",
+      });
+    }
+
+    if (appointment.status === "cancelada") {
+      return res.status(400).json({
+        message: "La cita ya está cancelada.",
+      });
+    }
+
+    appointment.status = "cancelada";
+
+    await appointment.save();
+
+    return res.status(200).json({
+      message: "Cita cancelada correctamente.",
+      appointment,
+    });
+  } catch (error) {
+    console.error("Error al cancelar cita:", error);
+
+    return res.status(500).json({
+      message: "Error al cancelar la cita.",
     });
   }
 };

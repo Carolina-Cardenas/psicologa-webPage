@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   createAppointment,
   getAvailableSlots,
+  cancelMyAppointment,
   getAppointmentsByDate,
   getMyAppointments,
 } from "../controllers/appointment.controller";
@@ -23,6 +24,13 @@ const appointmentLimiter = rateLimit({
     message: "Demasiadas solicitudes de cita. Intenta más tarde.",
   },
 });
+
+router.patch(
+  "/:id/cancel",
+  protectRoute,
+  requireAccountType("client"),
+  cancelMyAppointment
+);
 
 // Horarios disponibles
 router.get("/available/:date", getAvailableSlots);

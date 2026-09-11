@@ -31,8 +31,14 @@ const appointmentSchema = new Schema(
 
     status: {
       type: String,
-      enum: ["pendiente", "confirmada", "cancelada"],
+      enum: ["pendiente", "confirmada", "cancelada", "completada"],
       default: "pendiente",
+    },
+
+    videoLink: {
+      type: String,
+      trim: true,
+      default: null,
     },
   },
   { timestamps: true }

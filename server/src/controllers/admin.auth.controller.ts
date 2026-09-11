@@ -1,31 +1,48 @@
 import { Request, Response } from "express";
+
 import User from "../models/User";
+
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
+
+import { sendAdminResetPasswordEmail } from "../services/email.service";
 
 export const register = async (req: Request, res: Response) => {
   try {
-    const { name, email, password, role } = req.body; // ya validado por zod (registerSchema)
+    const { name, email, password, role } = req.body;
 
-    const userExists = await User.findOne({ email });
-    if (userExists)
-      return res.status(400).json({ message: "El email ya está registrado" });
+    const normalizedEmail = email.trim().toLowerCase();
 
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
+    const userExists = await User.findOne({
+      email: normalizedEmail,
+    });
+
+    if (userExists) {
+      return res.status(400).json({
+        message: "El email ya está registrado.",
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 12);
 
     const newUser = await User.create({
-      name,
-      email,
+      name: name.trim(),
+      email: normalizedEmail,
       password: hashedPassword,
       role,
     });
-    res
-      .status(201)
-      .json({ message: "Usuario creado con éxito", userId: newUser._id });
+
+    return res.status(201).json({
+      message: "Usuario creado con éxito.",
+      userId: newUser._id,
+    });
   } catch (error) {
     console.error("Error en registro:", error);
-    res.status(500).json({ message: "Error en el registro" });
+
+    return res.status(500).json({
+      message: "Error en el registro.",
+    });
   }
 };
 
@@ -33,56 +50,182 @@ export const login = async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
 
-    // .select("+password") es necesario porque el modelo oculta el password por defecto
-    const user = await User.findOne({ email }).select("+password");
-    if (!user)
-      return res.status(400).json({ message: "Credenciales inválidas" });
+    const normalizedEmail = email.trim().toLowerCase();
 
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch)
-      return res.status(400).json({ message: "Credenciales inválidas" });
+    const user = await User.findOne({
+      email: normalizedEmail,
+    }).select("+password");
 
-    // "type: admin" distingue este token de uno de cliente (ver auth.middleware.ts)
+    if (!user) {
+      return res.status(401).json({
+        message: "Credenciales inválidas.",
+      });
+    }
+
+    const isMatch = await bcrypt.compare(
+      password,
+      user.password
+    );
+
+    if (!isMatch) {
+      return res.status(401).json({
+        message: "Credenciales inválidas.",
+      });
+    }
+
+    const jwtSecret = process.env.JWT_SECRET;
+
+    if (!jwtSecret) {
+      throw new Error(
+        "JWT_SECRET no está configurado."
+      );
+    }
+
     const token = jwt.sign(
       {
         id: user._id.toString(),
         role: user.role,
         type: "admin",
       },
-      process.env.JWT_SECRET as string,
+      jwtSecret,
       {
         expiresIn: "1d",
         algorithm: "HS256",
       }
     );
 
-    res.json({
+    return res.status(200).json({
       token,
+
       user: {
         id: user._id,
         name: user.name,
         email: user.email,
         role: user.role,
+        type: "admin",
       },
     });
   } catch (error) {
     console.error("Error en login:", error);
-    res.status(500).json({ message: "Error en el servidor" });
+
+    return res.status(500).json({
+      message: "Error en el servidor.",
+    });
   }
 };
 
-export const forgotPassword = async (req: Request, res: Response) => {
+export const forgotPassword = async (
+  req: Request,
+  res: Response
+) => {
   try {
     const { email } = req.body;
 
-    const user = await User.findOne({ email });
+    const normalizedEmail = email
+      .trim()
+      .toLowerCase();
+
+    const user = await User.findOne({
+      email: normalizedEmail,
+    });
+
+    if (!user) {
+      return res.status(200).json({
+        message:
+          "Si el correo está registrado, recibirás un enlace de recuperación.",
+      });
+    }
+
+    const resetToken = crypto
+      .randomBytes(32)
+      .toString("hex");
+
+    const resetTokenHash = crypto
+      .createHash("sha256")
+      .update(resetToken)
+      .digest("hex");
+
+    user.resetPasswordToken = resetTokenHash;
+    user.resetPasswordExpires = new Date(
+      Date.now() + 15 * 60 * 1000
+    );
+
+    await user.save();
+
+    await sendAdminResetPasswordEmail(
+      user.email,
+      resetToken
+    );
 
     return res.status(200).json({
       message:
         "Si el correo está registrado, recibirás un enlace de recuperación.",
     });
   } catch (error) {
-    console.error("Error en forgotPassword:", error);
-    return res.status(500).json({ message: "Error interno del servidor." });
+    console.error(
+      "Error en forgotPassword:",
+      error
+    );
+
+    return res.status(500).json({
+      message:
+        "No fue posible procesar la solicitud.",
+    });
+  }
+};
+
+export const resetPassword = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const { token, newPassword } = req.body;
+
+    const resetTokenHash = crypto
+      .createHash("sha256")
+      .update(token)
+      .digest("hex");
+
+    const user = await User.findOne({
+      resetPasswordToken: resetTokenHash,
+
+      resetPasswordExpires: {
+        $gt: new Date(),
+      },
+    }).select(
+      "+password +resetPasswordToken +resetPasswordExpires"
+    );
+
+    if (!user) {
+      return res.status(400).json({
+        message:
+          "El enlace de recuperación es inválido o ha expirado.",
+      });
+    }
+
+    user.password = await bcrypt.hash(
+      newPassword,
+      12
+    );
+
+    user.resetPasswordToken = null;
+    user.resetPasswordExpires = null;
+
+    await user.save();
+
+    return res.status(200).json({
+      message:
+        "Contraseña actualizada correctamente.",
+    });
+  } catch (error) {
+    console.error(
+      "Error al restablecer contraseña:",
+      error
+    );
+
+    return res.status(500).json({
+      message:
+        "No fue posible restablecer la contraseña.",
+    });
   }
 };
