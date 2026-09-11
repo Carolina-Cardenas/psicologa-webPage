@@ -1,6 +1,10 @@
 import { Request, Response } from "express";
+
 import Appointment from "../models/Appointment";
+import Client from "../models/client";
+
 import { ALL_SLOTS } from "../constants/slots";
+import { sendAppointmentConfirmationEmail } from "../services/email.service";
 
 const getDayRange = (dateStr: string) => {
   const start = new Date(`${dateStr}T00:00:00.000Z`);
@@ -9,7 +13,10 @@ const getDayRange = (dateStr: string) => {
   return { start, end };
 };
 
-export const createAppointment = async (req: Request, res: Response) => {
+export const createAppointment = async (
+  req: Request,
+  res: Response
+) => {
   try {
     const { date, time, modality } = req.body;
 
@@ -58,6 +65,25 @@ export const createAppointment = async (req: Request, res: Response) => {
       status: "pendiente",
     });
 
+    const client = await Client.findById(clientId);
+
+    if (client) {
+      try {
+        await sendAppointmentConfirmationEmail(
+          client.email,
+          client.nombre,
+          date,
+          time,
+          modality
+        );
+      } catch (emailError) {
+        console.error(
+          "La cita fue creada, pero el correo no pudo enviarse:",
+          emailError
+        );
+      }
+    }
+
     return res.status(201).json(appointment);
   } catch (error: any) {
     if (error.code === 11000) {
@@ -69,7 +95,7 @@ export const createAppointment = async (req: Request, res: Response) => {
     console.error("Error al crear cita:", error);
 
     return res.status(500).json({
-      message: "Error al crear la cita",
+      message: "Error al crear la cita.",
     });
   }
 };
@@ -94,7 +120,9 @@ export const getAvailableSlots = async (
       status: { $ne: "cancelada" },
     });
 
-    const takenSlots = appointments.map((appointment) => appointment.time);
+    const takenSlots = appointments.map(
+      (appointment) => appointment.time
+    );
 
     const available = ALL_SLOTS.filter(
       (slot) => !takenSlots.includes(slot)
@@ -102,10 +130,13 @@ export const getAvailableSlots = async (
 
     return res.json(available);
   } catch (error) {
-    console.error("Error al obtener horarios disponibles:", error);
+    console.error(
+      "Error al obtener horarios disponibles:",
+      error
+    );
 
     return res.status(500).json({
-      message: "Error al obtener horarios disponibles",
+      message: "Error al obtener horarios disponibles.",
     });
   }
 };
@@ -134,12 +165,11 @@ export const getAppointmentsByDate = async (
     console.error("Error al obtener citas:", error);
 
     return res.status(500).json({
-      message: "Error al obtener las citas de este día",
+      message: "Error al obtener las citas de este día.",
     });
   }
 };
 
-/* Citas del paciente autenticado */
 export const getMyAppointments = async (
   req: Request,
   res: Response

@@ -32,30 +32,48 @@ export const sendResetPasswordEmail = async (
     subject: "Recuperación de contraseña",
     html: `
       <p>Hola,</p>
-
-      <p>
-        Hemos recibido una solicitud para restablecer tu contraseña.
-      </p>
-
-      <p>
-        <a href="${resetUrl}">
-          Restablecer contraseña
-        </a>
-      </p>
-
-      <p>
-        Este enlace expirará en 15 minutos.
-      </p>
-
-      <p>
-        Si no solicitaste este cambio, puedes ignorar este correo.
-      </p>
+      <p>Hemos recibido una solicitud para restablecer tu contraseña.</p>
+      <p><a href="${resetUrl}">Restablecer contraseña</a></p>
+      <p>Este enlace expirará en 15 minutos.</p>
+      <p>Si no solicitaste este cambio, puedes ignorar este correo.</p>
     `,
   });
 
   if (error) {
     console.error("Error de Resend:", error);
-
     throw new Error("No fue posible enviar el correo de recuperación.");
+  }
+};
+
+export const sendAppointmentConfirmationEmail = async (
+  email: string,
+  nombre: string,
+  date: string,
+  time: string,
+  modality: "online" | "presencial"
+): Promise<void> => {
+  const { error } = await resend.emails.send({
+    from: "onboarding@resend.dev",
+    to: email,
+    subject: "Confirmación de cita",
+    html: `
+      <p>Hola ${nombre},</p>
+
+      <p>Tu cita ha sido agendada correctamente.</p>
+
+      <p><strong>Fecha:</strong> ${date}</p>
+      <p><strong>Hora:</strong> ${time}</p>
+      <p><strong>Modalidad:</strong> ${
+        modality === "online" ? "En línea" : "Presencial"
+      }</p>
+      <p><strong>Duración:</strong> 45 minutos</p>
+
+      <p>Gracias por agendar tu sesión.</p>
+    `,
+  });
+
+  if (error) {
+    console.error("Error enviando confirmación de cita:", error);
+    throw new Error("No fue posible enviar el correo de confirmación.");
   }
 };
