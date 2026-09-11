@@ -6,16 +6,15 @@ import { format, addDays, isBefore, startOfDay } from "date-fns";
 import { es } from "date-fns/locale";
 import { ArrowLeft, ArrowRight, CheckCircle2, Clock, MapPin, Video, CalendarIcon } from "lucide-react";
 
-interface AppointmentDetails {
+  interface AppointmentDetails {
   _id: string;
+  clientId: string;
   date: string;
   time: string;
-  modalidad: string;
-  status: string;
+  modality: "online" | "presencial";
+  status: "pendiente" | "confirmada" | "cancelada";
 }
 
-
- 
   const BookAppointment = () => {
   const [step, setStep] = useState(0);
   const [appointmentDetails, setAppointmentDetails] = useState<AppointmentDetails | null>(null);
@@ -46,40 +45,50 @@ interface AppointmentDetails {
   const handleConfirm = async () => {
     if (!date || !time || !modality) return;
   
-    setIsSubmitting(true);
-    
-    
-    const tipoModalidad = modality === "online" ? "en línea" : "presencial";
+    const token = localStorage.getItem("token");
   
-    const appointmentData = {
-      date: format(date, "yyyy-MM-dd"),
-      time: time,
-      modality: modality, 
-      patientName: "Carolina Cárdenas", 
-      patientEmail: "carolina.beatriz.cardenas@gmail.com"
-    };
+    if (!token) {
+      alert("Debes iniciar sesión para agendar una cita.");
+      return;
+    }
+  
+    setIsSubmitting(true);
   
     try {
-      const res = await fetch("http://localhost:4000/api/appointments/", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(appointmentData),
-      });
+      const appointmentData = {
+        date: format(date, "yyyy-MM-dd"),
+        time,
+        modality,
+      };
+  
+      const res = await fetch(
+        "http://localhost:4000/api/appointments/",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(appointmentData),
+        }
+      );
   
       const data = await res.json();
   
       if (res.ok) {
         setAppointmentDetails(data);
-        setStep(3); 
+        setStep(3);
       } else {
-     
         console.log("Error detallado del backend:", data);
-        alert(`Error del Servidor: ${data.message || JSON.stringify(data.errors || data)}`);
+  
+        alert(
+          `Error del servidor: ${
+            data.message || JSON.stringify(data.errors || data)
+          }`
+        );
       }
     } catch (error) {
-      console.error(error);
+      console.error("Error al crear la cita:", error);
       alert("Hubo un fallo de red.");
     } finally {
       setIsSubmitting(false);
