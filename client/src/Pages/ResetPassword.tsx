@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-import { Eye, EyeOff, LockKeyhole } from "lucide-react";
+import { Eye, EyeOff, LockKeyhole,ArrowLeft } from "lucide-react";
 import { motion } from "framer-motion";
 
 const ResetPassword = () => {
@@ -89,16 +89,16 @@ const ResetPassword = () => {
             <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-secondary/20">
               <LockKeyhole className="h-8 w-8 text-secondary" />
             </div>
-
+  
             <h1 className="font-heading text-4xl font-bold text-foreground">
               Crear nueva contraseña
             </h1>
-
+  
             <p className="mt-3 text-lg text-foreground/75">
               Ingresa una nueva contraseña para tu cuenta.
             </p>
           </div>
-
+  
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
               <Label
@@ -107,7 +107,7 @@ const ResetPassword = () => {
               >
                 Nueva contraseña
               </Label>
-
+  
               <div className="relative">
                 <Input
                   id="newPassword"
@@ -118,7 +118,7 @@ const ResetPassword = () => {
                   className="h-14 pr-12 text-base"
                   required
                 />
-
+  
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
@@ -137,7 +137,7 @@ const ResetPassword = () => {
                 </button>
               </div>
             </div>
-
+  
             <div className="space-y-2">
               <Label
                 htmlFor="confirmPassword"
@@ -145,7 +145,7 @@ const ResetPassword = () => {
               >
                 Confirmar contraseña
               </Label>
-
+  
               <Input
                 id="confirmPassword"
                 type={showPassword ? "text" : "password"}
@@ -156,7 +156,7 @@ const ResetPassword = () => {
                 required
               />
             </div>
-
+  
             <Button
               type="submit"
               className="h-14 w-full text-base"
@@ -167,6 +167,17 @@ const ResetPassword = () => {
                 : "Guardar nueva contraseña"}
             </Button>
           </form>
+  
+          <div className="mt-8 text-center">
+            <button
+              type="button"
+              onClick={() => navigate("/login")}
+              className="inline-flex items-center text-sm font-medium text-secondary hover:underline"
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Volver al inicio de sesión
+            </button>
+          </div>
         </div>
       </motion.div>
     </div>

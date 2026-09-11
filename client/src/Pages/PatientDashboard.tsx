@@ -94,6 +94,63 @@ const PatientDashboard = () => {
     fetchAppointments();
   }, []);
 
+  // AQUÍ VA LA FUNCIÓN PARA CANCELAR
+    const handleCancelAppointment = async (appointmentId: string) => {
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      alert("Debes iniciar sesión.");
+      return;
+    }
+
+    const confirmCancel = window.confirm(
+      "¿Estás segura de que quieres cancelar esta cita?"
+    );
+
+    if (!confirmCancel) return;
+
+    try {
+      const response = await fetch(
+        `http://localhost:4000/api/appointments/${appointmentId}/cancel`,
+        {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.message || "No fue posible cancelar la cita."
+        );
+      }
+
+      setAppointments((previousAppointments) =>
+        previousAppointments.map((appointment) =>
+          appointment._id === appointmentId
+            ? {
+                ...appointment,
+                status: "cancelada",
+              }
+            : appointment
+        )
+      );
+
+      alert("Cita cancelada correctamente.");
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "No fue posible cancelar la cita.";
+
+      alert(message);
+    }
+  };
+
+  // DESPUÉS SIGUE LO QUE YA TENÍAS
   const upcoming = appointments.filter(
     (appointment) =>
       appointment.status === "pendiente" ||
@@ -108,6 +165,10 @@ const PatientDashboard = () => {
 
   const AppointmentCard = ({ apt }: { apt: Appointment }) => {
     const appointmentDate = parseISO(apt.date);
+
+    
+  
+
 
     return (
       <motion.div
@@ -178,6 +239,7 @@ const PatientDashboard = () => {
               size="sm"
               variant="outline"
               className="text-destructive hover:bg-destructive/10"
+              onClick={() => handleCancelAppointment(apt._id)}
             >
               <XCircle className="mr-1 h-3 w-3" />
               Cancelar
