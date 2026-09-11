@@ -44,9 +44,16 @@ export const login = async (req: Request, res: Response) => {
 
     // "type: admin" distingue este token de uno de cliente (ver auth.middleware.ts)
     const token = jwt.sign(
-      { id: user._id, role: user.role, type: "admin" },
+      {
+        id: user._id.toString(),
+        role: user.role,
+        type: "admin",
+      },
       process.env.JWT_SECRET as string,
-      { expiresIn: "1d" }
+      {
+        expiresIn: "1d",
+        algorithm: "HS256",
+      }
     );
 
     res.json({

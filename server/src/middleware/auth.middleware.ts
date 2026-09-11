@@ -5,6 +5,7 @@ export interface AuthRequest extends Request {
   user?: {
     id: string;
     type: "admin" | "client";
+    role?: "admin" | "psicologa";
   };
 }
 
@@ -33,14 +34,15 @@ export const protectRoute = (
 
   if (!jwtSecret) {
     console.error("JWT_SECRET no está configurado.");
-
     return res.status(500).json({
       message: "Error de configuración del servidor.",
     });
   }
 
   try {
-    const decoded = jwt.verify(token, jwtSecret);
+    const decoded = jwt.verify(token, jwtSecret, {
+      algorithms: ["HS256"],
+    });
 
     if (
       typeof decoded !== "object" ||
@@ -56,6 +58,11 @@ export const protectRoute = (
     req.user = {
       id: decoded.id,
       type: decoded.type,
+      role:
+        decoded.type === "admin" &&
+        (decoded.role === "admin" || decoded.role === "psicologa")
+          ? decoded.role
+          : undefined,
     };
 
     next();
@@ -68,7 +75,7 @@ export const protectRoute = (
   }
 };
 
-export const requireRole = (requiredRole: "admin" | "client") => {
+export const requireRole = (requiredRole: "admin" | "psicologa") => {
   return (
     req: AuthRequest,
     res: Response,
@@ -80,7 +87,29 @@ export const requireRole = (requiredRole: "admin" | "client") => {
       });
     }
 
-    if (req.user.type !== requiredRole) {
+    if (req.user.type !== "admin" || req.user.role !== requiredRole) {
+      return res.status(403).json({
+        message: "No tienes permisos para realizar esta acción.",
+      });
+    }
+
+    next();
+  };
+};
+
+export const requireAccountType = (requiredType: "admin" | "client") => {
+  return (
+    req: AuthRequest,
+    res: Response,
+    next: NextFunction
+  ): Response | void => {
+    if (!req.user) {
+      return res.status(401).json({
+        message: "Usuario no autenticado.",
+      });
+    }
+
+    if (req.user.type !== requiredType) {
       return res.status(403).json({
         message: "No tienes permisos para realizar esta acción.",
       });
