@@ -44,10 +44,13 @@ const Login = () => {
         );
       }
 
-      localStorage.setItem("token", data.token);
-
       localStorage.setItem(
-        "user",
+        "clientToken",
+        data.token
+      );
+      
+      localStorage.setItem(
+        "clientUser",
         JSON.stringify({
           id: data.client.id,
           nombre: data.client.nombre,

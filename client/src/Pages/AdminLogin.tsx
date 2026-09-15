@@ -39,16 +39,21 @@ const handleSubmit = async (e: React.FormEvent) => {
       return;
     }
 
-    localStorage.setItem("token", data.token);
     localStorage.setItem(
-      "user",
+      "adminToken",
+      data.token
+    );
+    
+    localStorage.setItem(
+      "adminUser",
       JSON.stringify({
         ...data.user,
         type: "admin",
       })
     );
-
+    
     window.location.href = "/admin";
+   
   } catch (error) {
     console.error("Error de login:", error);
     alert("No fue posible conectar con el servidor.");

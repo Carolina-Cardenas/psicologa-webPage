@@ -62,6 +62,12 @@ interface AppointmentClient {
   pais?: string;
 }
 
+type VideoPlatform =
+  | "zoom"
+  | "teams"
+  | "whatsapp"
+  | "otro";
+
 interface AdminAppointment {
   _id: string;
 
@@ -80,6 +86,8 @@ interface AdminAppointment {
     | "confirmada"
     | "cancelada"
     | "completada";
+
+  videoPlatform?: VideoPlatform | null;
 
   videoLink?: string | null;
 
@@ -114,6 +122,13 @@ const statusColors: Record<string, string> = {
     "bg-destructive/20 text-destructive border-destructive/30",
 };
 
+const platformLabels: Record<VideoPlatform, string> = {
+  zoom: "Zoom",
+  teams: "Microsoft Teams",
+  whatsapp: "WhatsApp",
+  otro: "Otra plataforma",
+};
+
 const AdminDashboard = () => {
   const [appointments, setAppointments] = useState<
     AdminAppointment[]
@@ -123,7 +138,24 @@ const AdminDashboard = () => {
 
   const [error, setError] = useState("");
 
-  const [searchQuery, setSearchQuery] = useState("");
+  const [
+    confirmingAppointmentId,
+    setConfirmingAppointmentId,
+  ] = useState<string | null>(null);
+
+  const [
+    appointmentToConfirm,
+    setAppointmentToConfirm,
+  ] = useState<AdminAppointment | null>(null);
+
+  const [videoPlatform, setVideoPlatform] =
+    useState<VideoPlatform | "">("");
+
+  const [videoLink, setVideoLink] =
+    useState("");
+
+  const [searchQuery, setSearchQuery] =
+    useState("");
 
   const [statusFilter, setStatusFilter] =
     useState<string>("all");
@@ -134,16 +166,19 @@ const AdminDashboard = () => {
   const [selectedDate, setSelectedDate] =
     useState<Date>(new Date());
 
-  const [blockedSlots] = useState<BlockedSlot[]>([]);
+  const [blockedSlots] =
+    useState<BlockedSlot[]>([]);
 
   const [blockDate, setBlockDate] =
     useState<Date | undefined>();
 
-  const [blockReason, setBlockReason] = useState("");
+  const [blockReason, setBlockReason] =
+    useState("");
 
   useEffect(() => {
     const fetchAppointments = async () => {
-      const token = localStorage.getItem("token");
+      const token =
+        localStorage.getItem("adminToken");
 
       if (!token) {
         setError(
@@ -183,6 +218,7 @@ const AdminDashboard = () => {
         }
 
         setAppointments(data);
+        setError("");
       } catch (error) {
         console.error(
           "Error cargando citas del administrador:",
@@ -200,15 +236,212 @@ const AdminDashboard = () => {
       }
     };
 
-    fetchAppointments();
+    void fetchAppointments();
   }, []);
+
+  const resetOnlineConfirmationForm = () => {
+    setAppointmentToConfirm(null);
+    setVideoPlatform("");
+    setVideoLink("");
+  };
+
+  const confirmAppointmentRequest = async (
+    appointment: AdminAppointment,
+    platform?: VideoPlatform,
+    link?: string
+  ) => {
+    const token =
+      localStorage.getItem("adminToken");
+
+    if (!token) {
+      alert(
+        "No hay una sesión administrativa activa."
+      );
+
+      return;
+    }
+
+    setConfirmingAppointmentId(
+      appointment._id
+    );
+
+    try {
+      const requestBody =
+        appointment.modality === "online"
+          ? {
+              videoPlatform: platform,
+              videoLink: link?.trim(),
+            }
+          : {};
+
+      const response = await fetch(
+        `http://localhost:4000/api/appointments/${appointment._id}/confirm`,
+        {
+          method: "PATCH",
+
+          headers: {
+            "Content-Type": "application/json",
+
+            Authorization: `Bearer ${token}`,
+          },
+
+          body: JSON.stringify(
+            requestBody
+          ),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.message ||
+            "No fue posible confirmar la cita."
+        );
+      }
+
+      setAppointments(
+        (previousAppointments) =>
+          previousAppointments.map(
+            (currentAppointment) =>
+              currentAppointment._id ===
+              appointment._id
+                ? {
+                    ...currentAppointment,
+
+                    status: "confirmada",
+
+                    videoPlatform:
+                      data.appointment
+                        ?.videoPlatform ??
+                      platform ??
+                      null,
+
+                    videoLink:
+                      data.appointment
+                        ?.videoLink ??
+                      link?.trim() ??
+                      null,
+                  }
+                : currentAppointment
+          )
+      );
+
+      resetOnlineConfirmationForm();
+
+      alert(
+        "Cita confirmada correctamente."
+      );
+    } catch (error) {
+      console.error(
+        "Error al confirmar la cita:",
+        error
+      );
+
+      const message =
+        error instanceof Error
+          ? error.message
+          : "No fue posible confirmar la cita.";
+
+      alert(message);
+    } finally {
+      setConfirmingAppointmentId(
+        null
+      );
+    }
+  };
+
+  const handleConfirmAppointment = async (
+    appointment: AdminAppointment
+  ) => {
+    if (
+      appointment.modality === "online"
+    ) {
+      setVideoPlatform("");
+      setVideoLink("");
+
+      setAppointmentToConfirm(
+        appointment
+      );
+
+      return;
+    }
+
+    const shouldConfirm =
+      window.confirm(
+        "¿Deseas confirmar esta cita presencial?"
+      );
+
+    if (!shouldConfirm) {
+      return;
+    }
+
+    await confirmAppointmentRequest(
+      appointment
+    );
+  };
+
+  const handleConfirmOnlineAppointment =
+    async () => {
+      if (!appointmentToConfirm) {
+        return;
+      }
+
+      if (!videoPlatform) {
+        alert(
+          "Selecciona una plataforma de videollamada."
+        );
+
+        return;
+      }
+
+      const normalizedVideoLink =
+        videoLink.trim();
+
+      if (!normalizedVideoLink) {
+        alert(
+          "Ingresa el enlace de la videollamada."
+        );
+
+        return;
+      }
+
+      try {
+        const parsedUrl = new URL(
+          normalizedVideoLink
+        );
+
+        if (
+          parsedUrl.protocol !== "https:" &&
+          parsedUrl.protocol !== "http:"
+        ) {
+          throw new Error(
+            "Protocolo inválido"
+          );
+        }
+      } catch {
+        alert(
+          "Ingresa un enlace válido que comience con http:// o https://."
+        );
+
+        return;
+      }
+
+      await confirmAppointmentRequest(
+        appointmentToConfirm,
+        videoPlatform,
+        normalizedVideoLink
+      );
+    };
 
   const getAppointmentDate = (
     date: string
   ): Date | null => {
     const parsedDate = parseISO(date);
 
-    return isValid(parsedDate) ? parsedDate : null;
+    return isValid(parsedDate)
+      ? parsedDate
+      : null;
   };
 
   const getPatientName = (
@@ -221,7 +454,9 @@ const AdminDashboard = () => {
     return `${appointment.clientId.nombre} ${appointment.clientId.apellidos}`.trim();
   };
 
-  const getInitials = (name: string) => {
+  const getInitials = (
+    name: string
+  ) => {
     return name
       .split(" ")
       .filter(Boolean)
@@ -231,107 +466,149 @@ const AdminDashboard = () => {
       .toUpperCase();
   };
 
-  const todayAppointments = appointments.filter(
-    (appointment) => {
-      const appointmentDate =
-        getAppointmentDate(appointment.date);
+  const todayAppointments =
+    appointments.filter(
+      (appointment) => {
+        const appointmentDate =
+          getAppointmentDate(
+            appointment.date
+          );
 
-      if (!appointmentDate) {
-        return false;
+        if (!appointmentDate) {
+          return false;
+        }
+
+        return (
+          format(
+            appointmentDate,
+            "yyyy-MM-dd"
+          ) ===
+            format(
+              new Date(),
+              "yyyy-MM-dd"
+            ) &&
+          appointment.status !==
+            "cancelada"
+        );
       }
-
-      return (
-        format(appointmentDate, "yyyy-MM-dd") ===
-          format(new Date(), "yyyy-MM-dd") &&
-        appointment.status !== "cancelada"
-      );
-    }
-  );
-
-  const filteredAppointments = appointments.filter(
-    (appointment) => {
-      const patientName =
-        getPatientName(appointment).toLowerCase();
-
-      const patientEmail =
-        appointment.clientId?.email.toLowerCase() ?? "";
-
-      const normalizedSearch =
-        searchQuery.trim().toLowerCase();
-
-      const matchesSearch =
-        patientName.includes(normalizedSearch) ||
-        patientEmail.includes(normalizedSearch);
-
-      const matchesStatus =
-        statusFilter === "all" ||
-        appointment.status === statusFilter;
-
-      const matchesModality =
-        modalityFilter === "all" ||
-        appointment.modality === modalityFilter;
-
-      return (
-        matchesSearch &&
-        matchesStatus &&
-        matchesModality
-      );
-    }
-  );
-
-  const patients = useMemo<PatientSummary[]>(() => {
-    const patientMap = new Map<
-      string,
-      PatientSummary
-    >();
-
-    appointments.forEach((appointment) => {
-      const client = appointment.clientId;
-
-      if (!client) {
-        return;
-      }
-
-      const existingPatient = patientMap.get(
-        client._id
-      );
-
-      if (existingPatient) {
-        existingPatient.sessions += 1;
-
-        return;
-      }
-
-      patientMap.set(client._id, {
-        id: client._id,
-
-        name: `${client.nombre} ${client.apellidos}`.trim(),
-
-        email: client.email,
-
-        sessions: 1,
-      });
-    });
-
-    return Array.from(patientMap.values()).sort(
-      (a, b) => a.name.localeCompare(b.name)
     );
-  }, [appointments]);
+
+  const filteredAppointments =
+    appointments.filter(
+      (appointment) => {
+        const patientName =
+          getPatientName(
+            appointment
+          ).toLowerCase();
+
+        const patientEmail =
+          appointment.clientId?.email.toLowerCase() ??
+          "";
+
+        const normalizedSearch =
+          searchQuery
+            .trim()
+            .toLowerCase();
+
+        const matchesSearch =
+          patientName.includes(
+            normalizedSearch
+          ) ||
+          patientEmail.includes(
+            normalizedSearch
+          );
+
+        const matchesStatus =
+          statusFilter === "all" ||
+          appointment.status ===
+            statusFilter;
+
+        const matchesModality =
+          modalityFilter === "all" ||
+          appointment.modality ===
+            modalityFilter;
+
+        return (
+          matchesSearch &&
+          matchesStatus &&
+          matchesModality
+        );
+      }
+    );
+
+  const patients =
+    useMemo<PatientSummary[]>(() => {
+      const patientMap = new Map<
+        string,
+        PatientSummary
+      >();
+
+      appointments.forEach(
+        (appointment) => {
+          const client =
+            appointment.clientId;
+
+          if (!client) {
+            return;
+          }
+
+          const existingPatient =
+            patientMap.get(
+              client._id
+            );
+
+          if (existingPatient) {
+            existingPatient.sessions += 1;
+
+            return;
+          }
+
+          patientMap.set(
+            client._id,
+            {
+              id: client._id,
+
+              name: `${client.nombre} ${client.apellidos}`.trim(),
+
+              email: client.email,
+
+              sessions: 1,
+            }
+          );
+        }
+      );
+
+      return Array.from(
+        patientMap.values()
+      ).sort((a, b) =>
+        a.name.localeCompare(b.name)
+      );
+    }, [appointments]);
 
   const appointmentsForSelectedDate =
-    appointments.filter((appointment) => {
-      const appointmentDate =
-        getAppointmentDate(appointment.date);
+    appointments.filter(
+      (appointment) => {
+        const appointmentDate =
+          getAppointmentDate(
+            appointment.date
+          );
 
-      if (!appointmentDate) {
-        return false;
+        if (!appointmentDate) {
+          return false;
+        }
+
+        return (
+          format(
+            appointmentDate,
+            "yyyy-MM-dd"
+          ) ===
+          format(
+            selectedDate,
+            "yyyy-MM-dd"
+          )
+        );
       }
-
-      return (
-        format(appointmentDate, "yyyy-MM-dd") ===
-        format(selectedDate, "yyyy-MM-dd")
-      );
-    });
+    );
 
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-background-alt px-4 py-8">
@@ -372,7 +649,9 @@ const AdminDashboard = () => {
                 <Calendar
                   mode="single"
                   selected={blockDate}
-                  onSelect={setBlockDate}
+                  onSelect={
+                    setBlockDate
+                  }
                   locale={es}
                   className="pointer-events-auto mx-auto"
                 />
@@ -383,8 +662,12 @@ const AdminDashboard = () => {
                   </label>
 
                   <Select
-                    value={blockReason}
-                    onValueChange={setBlockReason}
+                    value={
+                      blockReason
+                    }
+                    onValueChange={
+                      setBlockReason
+                    }
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Selecciona el motivo" />
@@ -412,7 +695,10 @@ const AdminDashboard = () => {
 
                 <Button
                   className="w-full"
-                  disabled={!blockDate || !blockReason}
+                  disabled={
+                    !blockDate ||
+                    !blockReason
+                  }
                 >
                   <Lock className="mr-2 h-4 w-4" />
                   Bloquear día
@@ -435,54 +721,61 @@ const AdminDashboard = () => {
           {[
             {
               label: "Citas hoy",
-              value: todayAppointments.length,
+              value:
+                todayAppointments.length,
               icon: CalendarIcon,
             },
 
             {
-              label: "Total pacientes",
+              label:
+                "Total pacientes",
               value: patients.length,
               icon: User,
             },
 
             {
-              label: "Días bloqueados",
-              value: blockedSlots.length,
+              label:
+                "Días bloqueados",
+              value:
+                blockedSlots.length,
               icon: Lock,
             },
-          ].map((stat, index) => (
-            <motion.div
-              key={stat.label}
-              initial={{
-                opacity: 0,
-                y: 10,
-              }}
-              animate={{
-                opacity: 1,
-                y: 0,
-              }}
-              transition={{
-                delay: index * 0.1,
-              }}
-              className="rounded-xl border bg-card p-5"
-            >
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-secondary/20">
-                  <stat.icon className="h-5 w-5 text-secondary" />
-                </div>
+          ].map(
+            (stat, index) => (
+              <motion.div
+                key={stat.label}
+                initial={{
+                  opacity: 0,
+                  y: 10,
+                }}
+                animate={{
+                  opacity: 1,
+                  y: 0,
+                }}
+                transition={{
+                  delay:
+                    index * 0.1,
+                }}
+                className="rounded-xl border bg-card p-5"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-secondary/20">
+                    <stat.icon className="h-5 w-5 text-secondary" />
+                  </div>
 
-                <div>
-                  <p className="text-2xl font-bold text-foreground">
-                    {stat.value}
-                  </p>
+                  <div>
+                    <p className="text-2xl font-bold text-foreground">
+                      {stat.value}
+                    </p>
 
-                  <p className="text-xs text-muted-foreground">
-                    {stat.label}
-                  </p>
+                    <p className="text-xs text-muted-foreground">
+                      {stat.label}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            </motion.div>
-          ))}
+              </motion.div>
+            )
+          )}
         </div>
 
         <Tabs
@@ -513,17 +806,28 @@ const AdminDashboard = () => {
 
                 <Input
                   placeholder="Buscar paciente..."
-                  value={searchQuery}
-                  onChange={(event) =>
-                    setSearchQuery(event.target.value)
+                  value={
+                    searchQuery
+                  }
+                  onChange={(
+                    event
+                  ) =>
+                    setSearchQuery(
+                      event.target
+                        .value
+                    )
                   }
                   className="pl-10"
                 />
               </div>
 
               <Select
-                value={statusFilter}
-                onValueChange={setStatusFilter}
+                value={
+                  statusFilter
+                }
+                onValueChange={
+                  setStatusFilter
+                }
               >
                 <SelectTrigger className="w-40">
                   <Filter className="mr-2 h-4 w-4" />
@@ -555,8 +859,12 @@ const AdminDashboard = () => {
               </Select>
 
               <Select
-                value={modalityFilter}
-                onValueChange={setModalityFilter}
+                value={
+                  modalityFilter
+                }
+                onValueChange={
+                  setModalityFilter
+                }
               >
                 <SelectTrigger className="w-40">
                   <SelectValue placeholder="Modalidad" />
@@ -584,7 +892,8 @@ const AdminDashboard = () => {
                   Cargando citas...
                 </p>
               </div>
-            ) : filteredAppointments.length === 0 ? (
+            ) : filteredAppointments.length ===
+              0 ? (
               <div className="rounded-xl border bg-card p-8 text-center">
                 <CalendarIcon className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
 
@@ -595,9 +904,13 @@ const AdminDashboard = () => {
             ) : (
               <div className="space-y-3">
                 {filteredAppointments.map(
-                  (appointment) => {
+                  (
+                    appointment
+                  ) => {
                     const patientName =
-                      getPatientName(appointment);
+                      getPatientName(
+                        appointment
+                      );
 
                     const appointmentDate =
                       getAppointmentDate(
@@ -606,7 +919,9 @@ const AdminDashboard = () => {
 
                     return (
                       <motion.div
-                        key={appointment._id}
+                        key={
+                          appointment._id
+                        }
                         initial={{
                           opacity: 0,
                         }}
@@ -618,18 +933,23 @@ const AdminDashboard = () => {
                         <div className="flex items-start justify-between gap-4">
                           <div className="flex items-start gap-3">
                             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 font-heading text-sm font-semibold text-primary">
-                              {getInitials(patientName)}
+                              {getInitials(
+                                patientName
+                              )}
                             </div>
 
                             <div>
                               <p className="font-medium text-foreground">
-                                {patientName}
+                                {
+                                  patientName
+                                }
                               </p>
 
                               {appointment.clientId && (
                                 <p className="mb-1 text-xs text-muted-foreground">
                                   {
-                                    appointment.clientId
+                                    appointment
+                                      .clientId
                                       .email
                                   }
                                 </p>
@@ -643,14 +963,17 @@ const AdminDashboard = () => {
                                       appointmentDate,
                                       "d MMM yyyy",
                                       {
-                                        locale: es,
+                                        locale:
+                                          es,
                                       }
                                     )
                                   : "Fecha inválida"}
 
                                 <Clock className="h-3 w-3" />
 
-                                {appointment.time}
+                                {
+                                  appointment.time
+                                }
 
                                 {appointment.modality ===
                                 "online" ? (
@@ -664,6 +987,22 @@ const AdminDashboard = () => {
                                   ? "En línea"
                                   : "Presencial"}
                               </p>
+
+                              {appointment.status ===
+                                "confirmada" &&
+                                appointment.modality ===
+                                  "online" &&
+                                appointment.videoPlatform && (
+                                  <p className="mt-2 text-xs text-muted-foreground">
+                                    Videollamada:{" "}
+                                    {
+                                      platformLabels[
+                                        appointment
+                                          .videoPlatform
+                                      ]
+                                    }
+                                  </p>
+                                )}
                             </div>
                           </div>
 
@@ -672,12 +1011,36 @@ const AdminDashboard = () => {
                               variant="outline"
                               className={
                                 statusColors[
-                                  appointment.status
+                                  appointment
+                                    .status
                                 ]
                               }
                             >
-                              {appointment.status}
+                              {
+                                appointment.status
+                              }
                             </Badge>
+
+                            {appointment.status ===
+                              "pendiente" && (
+                              <Button
+                                size="sm"
+                                onClick={() =>
+                                  handleConfirmAppointment(
+                                    appointment
+                                  )
+                                }
+                                disabled={
+                                  confirmingAppointmentId ===
+                                  appointment._id
+                                }
+                              >
+                                {confirmingAppointmentId ===
+                                appointment._id
+                                  ? "Confirmando..."
+                                  : "Confirmar"}
+                              </Button>
+                            )}
 
                             {appointment.status ===
                               "confirmada" && (
@@ -724,50 +1087,65 @@ const AdminDashboard = () => {
                 <p className="py-6 text-center text-sm text-muted-foreground">
                   Cargando pacientes...
                 </p>
-              ) : patients.length === 0 ? (
+              ) : patients.length ===
+                0 ? (
                 <p className="py-6 text-center text-sm text-muted-foreground">
                   Todavía no hay pacientes con citas.
                 </p>
               ) : (
-                patients.map((patient) => (
-                  <div
-                    key={patient.id}
-                    className="flex items-center justify-between border-b py-3 last:border-0"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
-                        {getInitials(patient.name)}
-                      </div>
-
-                      <div>
-                        <p className="text-sm font-medium text-foreground">
-                          {patient.name}
-                        </p>
-
-                        <p className="text-xs text-muted-foreground">
-                          {patient.email}
-                        </p>
-
-                        <p className="text-xs text-muted-foreground">
-                          {patient.sessions}{" "}
-                          {patient.sessions === 1
-                            ? "cita"
-                            : "citas"}
-                        </p>
-                      </div>
-                    </div>
-
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled
-                      title="La ficha clínica se conectará en el siguiente módulo"
+                patients.map(
+                  (patient) => (
+                    <div
+                      key={
+                        patient.id
+                      }
+                      className="flex items-center justify-between border-b py-3 last:border-0"
                     >
-                      Ver ficha
-                      <ChevronRight className="ml-1 h-3 w-3" />
-                    </Button>
-                  </div>
-                ))
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                          {getInitials(
+                            patient.name
+                          )}
+                        </div>
+
+                        <div>
+                          <p className="text-sm font-medium text-foreground">
+                            {
+                              patient.name
+                            }
+                          </p>
+
+                          <p className="text-xs text-muted-foreground">
+                            {
+                              patient.email
+                            }
+                          </p>
+
+                          <p className="text-xs text-muted-foreground">
+                            {
+                              patient.sessions
+                            }{" "}
+                            {patient.sessions ===
+                            1
+                              ? "cita"
+                              : "citas"}
+                          </p>
+                        </div>
+                      </div>
+
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled
+                        title="La ficha clínica se conectará en el siguiente módulo"
+                      >
+                        Ver ficha
+
+                        <ChevronRight className="ml-1 h-3 w-3" />
+                      </Button>
+                    </div>
+                  )
+                )
               )}
             </div>
           </TabsContent>
@@ -780,9 +1158,16 @@ const AdminDashboard = () => {
               <div className="rounded-xl border bg-card p-4">
                 <Calendar
                   mode="single"
-                  selected={selectedDate}
-                  onSelect={(date) =>
-                    date && setSelectedDate(date)
+                  selected={
+                    selectedDate
+                  }
+                  onSelect={(
+                    date
+                  ) =>
+                    date &&
+                    setSelectedDate(
+                      date
+                    )
                   }
                   locale={es}
                   className="pointer-events-auto"
@@ -807,13 +1192,19 @@ const AdminDashboard = () => {
                   </p>
                 ) : (
                   appointmentsForSelectedDate.map(
-                    (appointment) => (
+                    (
+                      appointment
+                    ) => (
                       <div
-                        key={appointment._id}
+                        key={
+                          appointment._id
+                        }
                         className="mb-3 flex items-center gap-3 rounded-lg border p-3"
                       >
                         <span className="text-sm font-medium text-primary">
-                          {appointment.time}
+                          {
+                            appointment.time
+                          }
                         </span>
 
                         <span className="text-sm text-foreground">
@@ -826,11 +1217,14 @@ const AdminDashboard = () => {
                           variant="outline"
                           className={`ml-auto ${
                             statusColors[
-                              appointment.status
+                              appointment
+                                .status
                             ]
                           }`}
                         >
-                          {appointment.status}
+                          {
+                            appointment.status
+                          }
                         </Badge>
                       </div>
                     )
@@ -846,23 +1240,180 @@ const AdminDashboard = () => {
                         "yyyy-MM-dd"
                       )
                   )
-                  .map((blocked) => (
-                    <div
-                      key={blocked.id}
-                      className="mb-3 flex items-center gap-3 rounded-lg border border-warning/30 bg-warning/10 p-3"
-                    >
-                      <Lock className="h-4 w-4 text-warning" />
+                  .map(
+                    (blocked) => (
+                      <div
+                        key={
+                          blocked.id
+                        }
+                        className="mb-3 flex items-center gap-3 rounded-lg border border-warning/30 bg-warning/10 p-3"
+                      >
+                        <Lock className="h-4 w-4 text-warning" />
 
-                      <span className="text-sm text-foreground">
-                        Día bloqueado:{" "}
-                        {blocked.reason}
-                      </span>
-                    </div>
-                  ))}
+                        <span className="text-sm text-foreground">
+                          Día bloqueado:{" "}
+                          {
+                            blocked.reason
+                          }
+                        </span>
+                      </div>
+                    )
+                  )}
               </div>
             </div>
           </TabsContent>
         </Tabs>
+
+        <Dialog
+          open={
+            appointmentToConfirm !==
+            null
+          }
+          onOpenChange={(open) => {
+            if (
+              !open &&
+              !confirmingAppointmentId
+            ) {
+              resetOnlineConfirmationForm();
+            }
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="font-heading">
+                Confirmar cita en línea
+              </DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-5">
+              {appointmentToConfirm && (
+                <div className="rounded-lg border bg-muted/30 p-4">
+                  <p className="font-medium text-foreground">
+                    {getPatientName(
+                      appointmentToConfirm
+                    )}
+                  </p>
+
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {
+                      appointmentToConfirm.time
+                    }{" "}
+                    · En línea
+                  </p>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <label
+                  htmlFor="video-platform"
+                  className="text-sm font-medium text-foreground"
+                >
+                  Plataforma de videollamada
+                </label>
+
+                <Select
+                  value={
+                    videoPlatform
+                  }
+                  onValueChange={(
+                    value
+                  ) =>
+                    setVideoPlatform(
+                      value as VideoPlatform
+                    )
+                  }
+                >
+                  <SelectTrigger id="video-platform">
+                    <SelectValue placeholder="Selecciona una plataforma" />
+                  </SelectTrigger>
+
+                  <SelectContent>
+                    <SelectItem value="zoom">
+                      Zoom
+                    </SelectItem>
+
+                    <SelectItem value="teams">
+                      Microsoft Teams
+                    </SelectItem>
+
+                    <SelectItem value="whatsapp">
+                      WhatsApp
+                    </SelectItem>
+
+                    <SelectItem value="otro">
+                      Otra plataforma
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <label
+                  htmlFor="video-link"
+                  className="text-sm font-medium text-foreground"
+                >
+                  Enlace de la videollamada
+                </label>
+
+                <Input
+                  id="video-link"
+                  type="url"
+                  placeholder="https://..."
+                  value={videoLink}
+                  onChange={(
+                    event
+                  ) =>
+                    setVideoLink(
+                      event.target
+                        .value
+                    )
+                  }
+                  autoComplete="off"
+                />
+
+                {videoPlatform ===
+                  "whatsapp" && (
+                  <p className="text-xs text-muted-foreground">
+                    Usa un enlace de WhatsApp, por ejemplo https://wa.me/...
+                  </p>
+                )}
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={Boolean(
+                    confirmingAppointmentId
+                  )}
+                  onClick={
+                    resetOnlineConfirmationForm
+                  }
+                >
+                  Cancelar
+                </Button>
+
+                <Button
+                  type="button"
+                  onClick={() =>
+                    void handleConfirmOnlineAppointment()
+                  }
+                  disabled={
+                    !videoPlatform ||
+                    !videoLink.trim() ||
+                    Boolean(
+                      confirmingAppointmentId
+                    )
+                  }
+                >
+                  {confirmingAppointmentId
+                    ? "Confirmando..."
+                    : "Confirmar cita"}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
