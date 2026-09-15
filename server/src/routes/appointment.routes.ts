@@ -8,6 +8,7 @@ import {
   getAppointmentsByDate,
   getMyAppointments,
   getAllAppointmentsForAdmin,
+  confirmAppointment,
 } from "../controllers/appointment.controller";
 
 import { validateBody } from "../middleware/validate";
@@ -67,6 +68,13 @@ router.get(
   protectRoute,
   requireRole("admin"),
   getAllAppointmentsForAdmin
+);
+
+router.patch(
+  "/:id/confirm",
+  protectRoute,
+  requireRole("admin"),
+  confirmAppointment
 );
 
 // Citas por fecha para admin/psicóloga

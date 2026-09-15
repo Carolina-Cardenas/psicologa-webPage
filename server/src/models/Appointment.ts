@@ -31,8 +31,19 @@ const appointmentSchema = new Schema(
 
     status: {
       type: String,
-      enum: ["pendiente", "confirmada", "cancelada", "completada"],
+      enum: [
+        "pendiente",
+        "confirmada",
+        "cancelada",
+        "completada",
+      ],
       default: "pendiente",
+    },
+
+    videoPlatform: {
+      type: String,
+      enum: ["zoom", "teams", "whatsapp", "otro"],
+      default: null,
     },
 
     videoLink: {
@@ -41,12 +52,19 @@ const appointmentSchema = new Schema(
       default: null,
     },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+  }
 );
 
 appointmentSchema.index(
   { date: 1, time: 1 },
-  { unique: true }
+  {
+    unique: true,
+    partialFilterExpression: {
+      status: { $ne: "cancelada" },
+    },
+  }
 );
 
 export default model("Appointment", appointmentSchema);
