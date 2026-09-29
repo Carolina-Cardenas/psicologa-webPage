@@ -12,3 +12,14 @@ export const appointmentSchemaVal = z.object({
 
   time: z.string(),
 });
+
+export const rescheduleAppointmentSchemaVal = z.object({
+  date: z
+    .string()
+    .regex(
+      /^\d{4}-\d{2}-\d{2}$/,
+      "Formato de fecha debe ser YYYY-MM-DD"
+    ),
+
+  time: z.string().min(1, "La hora es obligatoria"),
+});

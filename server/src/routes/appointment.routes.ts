@@ -5,6 +5,7 @@ import {
   createAppointment,
   getAvailableSlots,
   cancelMyAppointment,
+  rescheduleMyAppointment,
   getAppointmentsByDate,
   getMyAppointments,
   getAllAppointmentsForAdmin,
@@ -12,7 +13,11 @@ import {
 } from "../controllers/appointment.controller";
 
 import { validateBody } from "../middleware/validate";
-import { appointmentSchemaVal } from "../validators/appointment.validators";
+
+import {
+  appointmentSchemaVal,
+  rescheduleAppointmentSchemaVal,
+} from "../validators/appointment.validators";
 
 import {
   protectRoute,
@@ -26,7 +31,8 @@ const appointmentLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
   message: {
-    message: "Demasiadas solicitudes de cita. Intenta más tarde.",
+    message:
+      "Demasiadas solicitudes de cita. Intenta más tarde.",
   },
 });
 
@@ -36,6 +42,15 @@ router.patch(
   protectRoute,
   requireAccountType("client"),
   cancelMyAppointment
+);
+
+// Reagendar cita propia
+router.patch(
+  "/:id/reschedule",
+  protectRoute,
+  requireAccountType("client"),
+  validateBody(rescheduleAppointmentSchemaVal),
+  rescheduleMyAppointment
 );
 
 // Horarios disponibles
@@ -70,6 +85,7 @@ router.get(
   getAllAppointmentsForAdmin
 );
 
+// Confirmar cita
 router.patch(
   "/:id/confirm",
   protectRoute,
