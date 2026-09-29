@@ -1,8 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+
 import {
   Select,
   SelectContent,
@@ -10,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+
 import {
   Eye,
   EyeOff,
@@ -18,12 +21,24 @@ import {
   CheckCircle2,
   UserPlus,
 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+
+import {
+  motion,
+  AnimatePresence,
+} from "framer-motion";
+
 import countriesList from "world-countries";
-import { useNavigate, Link } from "react-router-dom";
+
+import {
+  useNavigate,
+  Link,
+} from "react-router-dom";
 
 const steps = [
-  { title: "Datos personales", subtitle: "Cuéntanos sobre ti" },
+  {
+    title: "Datos personales",
+    subtitle: "Cuéntanos sobre ti",
+  },
   {
     title: "Información de contacto",
     subtitle: "Para poder comunicarnos contigo",
@@ -40,9 +55,12 @@ const steps = [
 
 const Register = () => {
   const [step, setStep] = useState(0);
+
   const navigate = useNavigate();
-  const [isRegistered, setIsRegistered] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
+
+  const [showPassword, setShowPassword] =
+    useState(false);
+
   const [formData, setFormData] = useState({
     nombre: "",
     apellidos: "",
@@ -51,6 +69,8 @@ const Register = () => {
     telefono: "",
     email: "",
     pais: "",
+    rut: "",
+    direccion: "",
     modalidadPreferida: "",
     motivoConsulta: "",
     terapiaPrevia: "",
@@ -58,79 +78,177 @@ const Register = () => {
     confirmPassword: "",
   });
 
-  const update = (field: string, value: string) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
+  const update = (
+    field: string,
+    value: string
+  ) => {
+    setFormData((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (
+    e: React.FormEvent
+  ) => {
     e.preventDefault();
 
     if (step < steps.length - 1) {
       return;
     }
 
-    if (formData.password !== formData.confirmPassword) {
+    if (
+      formData.password !==
+      formData.confirmPassword
+    ) {
       return;
     }
 
     try {
-      console.log("Enviando datos reales al backend:", formData.email);
-
       const res = await fetch(
         "http://localhost:4000/api/client/auth/register",
         {
           method: "POST",
+
           headers: {
             "Content-Type": "application/json",
           },
+
           body: JSON.stringify({
             nombre: formData.nombre.trim(),
-            apellidos: formData.apellidos.trim(),
-            fechaNacimiento: formData.fechaNacimiento,
-            genero: formData.genero || undefined,
-            telefono: formData.telefono.trim(),
-            email: formData.email.trim().toLowerCase(),
-            pais: formData.pais || undefined,
-            modalidadPreferida: formData.modalidadPreferida || undefined,
-            motivoConsulta: formData.motivoConsulta.trim(),
-            terapiaPrevia: formData.terapiaPrevia || undefined,
-            password: formData.password,
+
+            apellidos:
+              formData.apellidos.trim(),
+
+            fechaNacimiento:
+              formData.fechaNacimiento,
+
+            genero:
+              formData.genero || undefined,
+
+            telefono:
+              formData.telefono.trim(),
+
+            email:
+              formData.email
+                .trim()
+                .toLowerCase(),
+
+            pais:
+              formData.pais || undefined,
+
+            rut:
+              formData.rut
+                .trim()
+                .toUpperCase(),
+
+            direccion:
+              formData.direccion.trim(),
+
+            modalidadPreferida:
+              formData.modalidadPreferida ||
+              undefined,
+
+            motivoConsulta:
+              formData.motivoConsulta.trim(),
+
+            terapiaPrevia:
+              formData.terapiaPrevia ||
+              undefined,
+
+            password:
+              formData.password,
           }),
         }
       );
 
       const data = await res.json();
 
-      if (res.ok) {
-        setIsRegistered(true);
-        alert("¡Usuario registrado con éxito!");
-        navigate("/login");
-      } else {
-        console.error("Error del Servidor:", data.message || data);
-        alert(data.message || "Error al registrar usuario");
+      if (!res.ok) {
+        console.error(
+          "Error del servidor:",
+          data
+        );
+
+        alert(
+          data.message ||
+            "Error al registrar usuario"
+        );
+
+        return;
       }
+
+      /*
+       * El backend genera un JWT inmediatamente
+       * después de crear la cuenta.
+       *
+       * Guardamos la misma estructura de sesión
+       * utilizada por Login y BookAppointment.
+       */
+      localStorage.setItem(
+        "clientToken",
+        data.token
+      );
+
+      localStorage.setItem(
+        "clientUser",
+        JSON.stringify({
+          ...data.client,
+          type: "client",
+        })
+      );
+
+      /*
+       * El paciente ya está autenticado.
+       * No necesita iniciar sesión nuevamente.
+       *
+       * Continuamos directamente con la agenda.
+       */
+      navigate("/agendar", {
+        replace: true,
+      });
     } catch (error) {
-      console.error("Fallo de red:", error);
-      alert("Hubo un problema de conexión con el servidor.");
+      console.error(
+        "Fallo de red:",
+        error
+      );
+
+      alert(
+        "Hubo un problema de conexión con el servidor."
+      );
     }
   };
 
   const canProceed = () => {
     switch (step) {
       case 0:
-        return !!(
+        return Boolean(
           formData.nombre &&
-          formData.apellidos &&
-          formData.fechaNacimiento
+            formData.apellidos &&
+            formData.fechaNacimiento
         );
+
       case 1:
-        return !!(formData.telefono && formData.email && formData.pais);
-      case 2:
-        return !!formData.motivoConsulta;
-      case 3:
-        return !!(
-          formData.password && formData.password === formData.confirmPassword
+        return Boolean(
+          formData.telefono &&
+            formData.email &&
+            formData.pais &&
+            formData.rut &&
+            formData.direccion
         );
+
+      case 2:
+        return Boolean(
+          formData.motivoConsulta
+        );
+
+      case 3:
+        return Boolean(
+          formData.password &&
+            formData.password ===
+              formData.confirmPassword
+        );
+
       default:
         return false;
     }
@@ -139,48 +257,72 @@ const Register = () => {
   const countries = countriesList
     .map((country) => ({
       code: country.cca2.toLowerCase(),
-      name: country.translations?.spa?.common || country.name.common,
+
+      name:
+        country.translations?.spa?.common ||
+        country.name.common,
     }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) =>
+      a.name.localeCompare(b.name)
+    );
 
   return (
     <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-background-alt px-4 py-12">
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
+        initial={{
+          opacity: 0,
+          y: 20,
+        }}
+        animate={{
+          opacity: 1,
+          y: 0,
+        }}
         className="w-full max-w-lg"
       >
         <div className="rounded-2xl border bg-card p-8 shadow-lg">
-          {/* Step indicator */}
+
+          {/* INDICADOR DE PASOS */}
           <div className="mb-8">
             <div className="flex items-center justify-between">
-              {steps.map((s, i) => (
-                <div key={i} className="flex items-center">
+              {steps.map((_, i) => (
+                <div
+                  key={i}
+                  className="flex items-center"
+                >
                   <div
                     className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold transition-colors ${
                       i < step
                         ? "bg-success text-success-foreground"
                         : i === step
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted text-muted-foreground"
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-muted text-muted-foreground"
                     }`}
                   >
-                    {i < step ? <CheckCircle2 className="h-4 w-4" /> : i + 1}
+                    {i < step ? (
+                      <CheckCircle2 className="h-4 w-4" />
+                    ) : (
+                      i + 1
+                    )}
                   </div>
+
                   {i < steps.length - 1 && (
                     <div
                       className={`mx-1 h-0.5 w-6 sm:w-10 ${
-                        i < step ? "bg-success" : "bg-muted"
+                        i < step
+                          ? "bg-success"
+                          : "bg-muted"
                       }`}
                     />
                   )}
                 </div>
               ))}
             </div>
+
             <div className="mt-4">
               <h1 className="font-heading text-xl font-bold text-foreground">
                 {steps[step].title}
               </h1>
+
               <p className="text-sm text-muted-foreground">
                 {steps[step].subtitle}
               </p>
@@ -191,64 +333,121 @@ const Register = () => {
             <AnimatePresence mode="wait">
               <motion.div
                 key={step}
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                transition={{ duration: 0.2 }}
+                initial={{
+                  opacity: 0,
+                  x: 20,
+                }}
+                animate={{
+                  opacity: 1,
+                  x: 0,
+                }}
+                exit={{
+                  opacity: 0,
+                  x: -20,
+                }}
+                transition={{
+                  duration: 0.2,
+                }}
                 className="space-y-4"
               >
+
+                {/* PASO 1: DATOS PERSONALES */}
                 {step === 0 && (
                   <>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div className="space-y-2">
-                        <Label htmlFor="nombre">Nombre *</Label>
+                        <Label htmlFor="nombre">
+                          Nombre *
+                        </Label>
+
                         <Input
                           id="nombre"
                           placeholder="María"
                           value={formData.nombre}
-                          onChange={(e) => update("nombre", e.target.value)}
+                          onChange={(e) =>
+                            update(
+                              "nombre",
+                              e.target.value
+                            )
+                          }
                           required
                         />
                       </div>
+
                       <div className="space-y-2">
-                        <Label htmlFor="apellidos">Apellidos *</Label>
+                        <Label htmlFor="apellidos">
+                          Apellidos *
+                        </Label>
+
                         <Input
                           id="apellidos"
                           placeholder="García Pérez"
-                          value={formData.apellidos}
-                          onChange={(e) => update("apellidos", e.target.value)}
+                          value={
+                            formData.apellidos
+                          }
+                          onChange={(e) =>
+                            update(
+                              "apellidos",
+                              e.target.value
+                            )
+                          }
                           required
                         />
                       </div>
                     </div>
+
                     <div className="space-y-2">
                       <Label htmlFor="fechaNacimiento">
                         Fecha de nacimiento *
                       </Label>
+
                       <Input
                         id="fechaNacimiento"
                         type="date"
-                        value={formData.fechaNacimiento}
+                        value={
+                          formData.fechaNacimiento
+                        }
                         onChange={(e) =>
-                          update("fechaNacimiento", e.target.value)
+                          update(
+                            "fechaNacimiento",
+                            e.target.value
+                          )
                         }
                         required
                       />
                     </div>
-                   
+
                     <div className="space-y-2">
-                      <Label>Género</Label>
+                      <Label>
+                        Género
+                      </Label>
+
                       <Select
                         value={formData.genero}
-                        onValueChange={(v) => update("genero", v)}
+                        onValueChange={(value) =>
+                          update(
+                            "genero",
+                            value
+                          )
+                        }
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Selecciona" />
                         </SelectTrigger>
+
                         <SelectContent>
-                          <SelectItem value="femenino">Femenino</SelectItem>
-                          <SelectItem value="masculino">Masculino</SelectItem>
-                          <SelectItem value="no-binario">No binario</SelectItem>
+                          <SelectItem value="femenino">
+                            Femenino
+                          </SelectItem>
+
+                          <SelectItem value="masculino">
+                            Masculino
+                          </SelectItem>
+
+                          <SelectItem value="no-binario">
+                            No binario
+                          </SelectItem>
+
                           <SelectItem value="prefiero-no-decir">
                             Prefiero no decir
                           </SelectItem>
@@ -258,115 +457,234 @@ const Register = () => {
                   </>
                 )}
 
+                {/* PASO 2: CONTACTO */}
                 {step === 1 && (
                   <>
                     <div className="space-y-2">
-                      <Label htmlFor="telefono">Teléfono *</Label>
+                      <Label htmlFor="telefono">
+                        Teléfono *
+                      </Label>
+
                       <Input
                         id="telefono"
                         type="tel"
-                        placeholder="+52 55 1234 5678"
-                        value={formData.telefono}
-                        onChange={(e) => update("telefono", e.target.value)}
+                        placeholder="+56 9 1234 5678"
+                        value={
+                          formData.telefono
+                        }
+                        onChange={(e) =>
+                          update(
+                            "telefono",
+                            e.target.value
+                          )
+                        }
                         required
                       />
                     </div>
+
                     <div className="space-y-2">
-                      <Label htmlFor="email">Correo electrónico *</Label>
+                      <Label htmlFor="email">
+                        Correo electrónico *
+                      </Label>
+
                       <Input
                         id="email"
                         type="email"
                         placeholder="tu@correo.com"
                         value={formData.email}
-                        onChange={(e) => update("email", e.target.value)}
+                        onChange={(e) =>
+                          update(
+                            "email",
+                            e.target.value
+                          )
+                        }
                         required
                       />
                     </div>
+
                     <div className="space-y-2">
-                      <Label htmlFor="pais">País</Label>
+                      <Label htmlFor="rut">
+                        RUT *
+                      </Label>
+
+                      <Input
+                        id="rut"
+                        type="text"
+                        placeholder="12.345.678-5"
+                        value={formData.rut}
+                        onChange={(e) =>
+                          update(
+                            "rut",
+                            e.target.value
+                          )
+                        }
+                        required
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="direccion">
+                        Dirección *
+                      </Label>
+
+                      <Input
+                        id="direccion"
+                        type="text"
+                        placeholder="Calle, número, comuna o ciudad"
+                        value={
+                          formData.direccion
+                        }
+                        onChange={(e) =>
+                          update(
+                            "direccion",
+                            e.target.value
+                          )
+                        }
+                        required
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="pais">
+                        País *
+                      </Label>
+
                       <Select
                         value={formData.pais}
-                        onValueChange={(value) => update("pais", value)}
+                        onValueChange={(value) =>
+                          update(
+                            "pais",
+                            value
+                          )
+                        }
                       >
-                        <SelectTrigger id="pais" className="w-full">
+                        <SelectTrigger
+                          id="pais"
+                          className="w-full"
+                        >
                           <SelectValue placeholder="Selecciona tu país" />
                         </SelectTrigger>
 
                         <SelectContent
                           position="popper"
                           sideOffset={4}
-                          className="w-[var(--radix-select-trigger-width)] max-h-[250px] bg-white border border-gray-200 text-foreground shadow-md z-[100] overflow-y-auto rounded-md"
+                          className="w-[var(--radix-select-trigger-width)] max-h-[250px] overflow-y-auto rounded-md border border-gray-200 bg-white text-foreground shadow-md z-[100]"
                         >
-                          {countries.map((country) => (
-                            <SelectItem
-                              key={country.code}
-                              value={country.code}
-                              className="cursor-pointer py-2 px-3 hover:bg-gray-100 focus:bg-gray-100 text-gray-900"
-                            >
-                              {country.name}
-                            </SelectItem>
-                          ))}
+                          {countries.map(
+                            (country) => (
+                              <SelectItem
+                                key={
+                                  country.code
+                                }
+                                value={
+                                  country.code
+                                }
+                                className="cursor-pointer px-3 py-2 text-gray-900 hover:bg-gray-100 focus:bg-gray-100"
+                              >
+                                {country.name}
+                              </SelectItem>
+                            )
+                          )}
                         </SelectContent>
                       </Select>
                     </div>
+
                     <div className="space-y-2">
-                      <Label>Modalidad preferida</Label>
+                      <Label>
+                        Modalidad preferida
+                      </Label>
+
                       <Select
-                        value={formData.modalidadPreferida}
-                        onValueChange={(v) => update("modalidadPreferida", v)}
+                        value={
+                          formData.modalidadPreferida
+                        }
+                        onValueChange={(value) =>
+                          update(
+                            "modalidadPreferida",
+                            value
+                          )
+                        }
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Selecciona" />
                         </SelectTrigger>
+
                         <SelectContent>
-                          <SelectItem value="presencial">Presencial</SelectItem>
-                          <SelectItem value="online">En línea</SelectItem>
+                          <SelectItem value="presencial">
+                            Presencial
+                          </SelectItem>
+
+                          <SelectItem value="online">
+                            En línea
+                          </SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                   </>
                 )}
 
+                {/* PASO 3: CONSULTA */}
                 {step === 2 && (
                   <>
                     <div className="space-y-2">
                       <Label htmlFor="motivoConsulta">
                         ¿Qué te motiva a buscar terapia? *
                       </Label>
+
                       <Textarea
                         id="motivoConsulta"
                         placeholder="Cuéntanos brevemente, todo lo que compartas es confidencial..."
                         rows={4}
-                        value={formData.motivoConsulta}
+                        value={
+                          formData.motivoConsulta
+                        }
                         onChange={(e) =>
-                          update("motivoConsulta", e.target.value)
+                          update(
+                            "motivoConsulta",
+                            e.target.value
+                          )
                         }
                         required
                       />
+
                       <p className="text-xs text-muted-foreground">
-                        Esta información nos ayuda a preparar mejor tu primera
-                        sesión. No te preocupes, es completamente confidencial.
+                        Esta información nos ayuda a preparar mejor tu primera sesión.
                       </p>
                     </div>
+
                     <div className="space-y-2">
-                      <Label>¿Has tenido terapia antes?</Label>
+                      <Label>
+                        ¿Has tenido terapia antes?
+                      </Label>
+
                       <Select
-                        value={formData.terapiaPrevia}
-                        onValueChange={(v) => update("terapiaPrevia", v)}
+                        value={
+                          formData.terapiaPrevia
+                        }
+                        onValueChange={(value) =>
+                          update(
+                            "terapiaPrevia",
+                            value
+                          )
+                        }
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Selecciona" />
                         </SelectTrigger>
+
                         <SelectContent>
                           <SelectItem value="no">
                             No, es mi primera vez
                           </SelectItem>
+
                           <SelectItem value="si-buena">
                             Sí, y fue una buena experiencia
                           </SelectItem>
+
                           <SelectItem value="si-no-bien">
                             Sí, pero no me fue tan bien
                           </SelectItem>
+
                           <SelectItem value="prefiero-no-decir">
                             Prefiero no decir
                           </SelectItem>
@@ -376,23 +694,43 @@ const Register = () => {
                   </>
                 )}
 
+                {/* PASO 4: CUENTA */}
                 {step === 3 && (
                   <>
                     <div className="space-y-2">
-                      <Label htmlFor="password">Contraseña *</Label>
+                      <Label htmlFor="password">
+                        Contraseña *
+                      </Label>
+
                       <div className="relative">
                         <Input
                           id="password"
-                          type={showPassword ? "text" : "password"}
+                          type={
+                            showPassword
+                              ? "text"
+                              : "password"
+                          }
                           placeholder="Mínimo 8 caracteres"
-                          value={formData.password}
-                          onChange={(e) => update("password", e.target.value)}
+                          value={
+                            formData.password
+                          }
+                          onChange={(e) =>
+                            update(
+                              "password",
+                              e.target.value
+                            )
+                          }
                           required
                           minLength={8}
                         />
+
                         <button
                           type="button"
-                          onClick={() => setShowPassword(!showPassword)}
+                          onClick={() =>
+                            setShowPassword(
+                              !showPassword
+                            )
+                          }
                           className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"
                         >
                           {showPassword ? (
@@ -403,22 +741,31 @@ const Register = () => {
                         </button>
                       </div>
                     </div>
+
                     <div className="space-y-2">
                       <Label htmlFor="confirmPassword">
                         Confirmar contraseña *
                       </Label>
+
                       <Input
                         id="confirmPassword"
                         type="password"
                         placeholder="Repite tu contraseña"
-                        value={formData.confirmPassword}
+                        value={
+                          formData.confirmPassword
+                        }
                         onChange={(e) =>
-                          update("confirmPassword", e.target.value)
+                          update(
+                            "confirmPassword",
+                            e.target.value
+                          )
                         }
                         required
                       />
+
                       {formData.confirmPassword &&
-                        formData.password !== formData.confirmPassword && (
+                        formData.password !==
+                          formData.confirmPassword && (
                           <p className="text-xs text-destructive">
                             Las contraseñas no coinciden
                           </p>
@@ -434,25 +781,40 @@ const Register = () => {
                 <Button
                   type="button"
                   variant="ghost"
-                  onClick={() => setStep(step - 1)}
+                  onClick={() =>
+                    setStep(step - 1)
+                  }
                 >
-                  <ArrowLeft className="mr-2 h-4 w-4" /> Anterior
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  Anterior
                 </Button>
               ) : (
                 <span />
               )}
 
-              {step < steps.length - 1 ? (
+              {step <
+              steps.length - 1 ? (
                 <Button
                   type="button"
-                  onClick={() => setStep(step + 1)}
-                  disabled={!canProceed()}
+                  onClick={() =>
+                    setStep(step + 1)
+                  }
+                  disabled={
+                    !canProceed()
+                  }
                 >
-                  Siguiente <ArrowRight className="ml-2 h-4 w-4" />
+                  Siguiente
+                  <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               ) : (
-                <Button type="submit" disabled={!canProceed()}>
-                  <UserPlus className="mr-2 h-4 w-4" /> Crear cuenta
+                <Button
+                  type="submit"
+                  disabled={
+                    !canProceed()
+                  }
+                >
+                  <UserPlus className="mr-2 h-4 w-4" />
+                  Crear cuenta
                 </Button>
               )}
             </div>

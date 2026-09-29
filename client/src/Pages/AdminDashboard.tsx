@@ -268,10 +268,14 @@ const AdminDashboard = () => {
     try {
       const requestBody =
         appointment.modality === "online"
-          ? {
-              videoPlatform: platform,
-              videoLink: link?.trim(),
-            }
+          ? platform === "whatsapp"
+            ? {
+                videoPlatform: platform,
+              }
+            : {
+                videoPlatform: platform,
+                videoLink: link?.trim(),
+              }
           : {};
 
       const response = await fetch(
@@ -320,7 +324,6 @@ const AdminDashboard = () => {
                     videoLink:
                       data.appointment
                         ?.videoLink ??
-                      link?.trim() ??
                       null,
                   }
                 : currentAppointment
@@ -395,6 +398,36 @@ const AdminDashboard = () => {
         return;
       }
 
+      /*
+       * WhatsApp utiliza directamente el
+       * teléfono registrado del paciente.
+       * No necesita enlace.
+       */
+      if (videoPlatform === "whatsapp") {
+        const patientPhone =
+          appointmentToConfirm.clientId
+            ?.telefono?.trim();
+
+        if (!patientPhone) {
+          alert(
+            "El paciente no tiene un número de teléfono registrado para utilizar WhatsApp."
+          );
+
+          return;
+        }
+
+        await confirmAppointmentRequest(
+          appointmentToConfirm,
+          "whatsapp"
+        );
+
+        return;
+      }
+
+      /*
+       * Zoom, Teams y Otra plataforma
+       * necesitan un enlace.
+       */
       const normalizedVideoLink =
         videoLink.trim();
 
@@ -434,6 +467,24 @@ const AdminDashboard = () => {
       );
     };
 
+  const handleVideoPlatformChange = (
+    value: string
+  ) => {
+    const platform =
+      value as VideoPlatform;
+
+    setVideoPlatform(platform);
+
+    /*
+     * Evitar conservar un enlace de Zoom,
+     * Teams u otra plataforma si después
+     * se selecciona WhatsApp.
+     */
+    if (platform === "whatsapp") {
+      setVideoLink("");
+    }
+  };
+
   const getAppointmentDate = (
     date: string
   ): Date | null => {
@@ -465,6 +516,12 @@ const AdminDashboard = () => {
       .slice(0, 2)
       .toUpperCase();
   };
+
+  const pendingAppointments =
+    appointments.filter(
+      (appointment) =>
+        appointment.status === "pendiente"
+    );
 
   const todayAppointments =
     appointments.filter(
@@ -717,8 +774,15 @@ const AdminDashboard = () => {
           </div>
         )}
 
-        <div className="mb-8 grid gap-4 sm:grid-cols-3">
+        <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {[
+            {
+              label: "Citas pendientes",
+              value:
+                pendingAppointments.length,
+              icon: Clock,
+            },
+
             {
               label: "Citas hoy",
               value:
@@ -1315,12 +1379,8 @@ const AdminDashboard = () => {
                   value={
                     videoPlatform
                   }
-                  onValueChange={(
-                    value
-                  ) =>
-                    setVideoPlatform(
-                      value as VideoPlatform
-                    )
+                  onValueChange={
+                    handleVideoPlatformChange
                   }
                 >
                   <SelectTrigger id="video-platform">
@@ -1347,37 +1407,79 @@ const AdminDashboard = () => {
                 </Select>
               </div>
 
-              <div className="space-y-2">
-                <label
-                  htmlFor="video-link"
-                  className="text-sm font-medium text-foreground"
-                >
-                  Enlace de la videollamada
-                </label>
-
-                <Input
-                  id="video-link"
-                  type="url"
-                  placeholder="https://..."
-                  value={videoLink}
-                  onChange={(
-                    event
-                  ) =>
-                    setVideoLink(
-                      event.target
-                        .value
-                    )
-                  }
-                  autoComplete="off"
-                />
-
-                {videoPlatform ===
-                  "whatsapp" && (
-                  <p className="text-xs text-muted-foreground">
-                    Usa un enlace de WhatsApp, por ejemplo https://wa.me/...
+              {videoPlatform ===
+              "whatsapp" ? (
+                <div className="rounded-lg border bg-muted/30 p-4">
+                  <p className="text-sm font-medium text-foreground">
+                    Sesión por WhatsApp
                   </p>
-                )}
-              </div>
+
+                  {appointmentToConfirm
+                    ?.clientId?.telefono ? (
+                    <>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Se utilizará el número de
+                        teléfono registrado por el
+                        paciente:
+                      </p>
+
+                      <p className="mt-2 text-sm font-medium text-foreground">
+                        {
+                          appointmentToConfirm
+                            .clientId
+                            .telefono
+                        }
+                      </p>
+
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        No necesitas ingresar un
+                        enlace. La psicóloga podrá
+                        comunicarse con el paciente
+                        mediante WhatsApp utilizando
+                        este número.
+                      </p>
+                    </>
+                  ) : (
+                    <p className="mt-1 text-sm text-destructive">
+                      Este paciente no tiene un
+                      número de teléfono registrado.
+                    </p>
+                  )}
+                </div>
+              ) : (
+                videoPlatform && (
+                  <div className="space-y-2">
+                    <label
+                      htmlFor="video-link"
+                      className="text-sm font-medium text-foreground"
+                    >
+                      Enlace de la videollamada
+                    </label>
+
+                    <Input
+                      id="video-link"
+                      type="url"
+                      placeholder="https://..."
+                      value={videoLink}
+                      onChange={(
+                        event
+                      ) =>
+                        setVideoLink(
+                          event.target
+                            .value
+                        )
+                      }
+                      autoComplete="off"
+                    />
+
+                    <p className="text-xs text-muted-foreground">
+                      Ingresa el enlace que utilizará
+                      el paciente para conectarse a
+                      la sesión.
+                    </p>
+                  </div>
+                )
+              )}
 
               <div className="flex justify-end gap-3">
                 <Button
@@ -1400,7 +1502,13 @@ const AdminDashboard = () => {
                   }
                   disabled={
                     !videoPlatform ||
-                    !videoLink.trim() ||
+                    (videoPlatform ===
+                      "whatsapp"
+                      ? !appointmentToConfirm
+                          ?.clientId
+                          ?.telefono
+                          ?.trim()
+                      : !videoLink.trim()) ||
                     Boolean(
                       confirmingAppointmentId
                     )

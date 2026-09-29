@@ -96,6 +96,44 @@ const PatientDashboard = () => {
 
   const [error, setError] = useState("");
 
+  /*
+   * Estados utilizados para reagendar.
+   */
+  const [
+    reschedulingAppointmentId,
+    setReschedulingAppointmentId,
+  ] = useState<string | null>(null);
+
+  const [
+    rescheduleDate,
+    setRescheduleDate,
+  ] = useState("");
+
+  const [
+    rescheduleTime,
+    setRescheduleTime,
+  ] = useState("");
+
+  const [
+    availableSlots,
+    setAvailableSlots,
+  ] = useState<string[]>([]);
+
+  const [
+    loadingSlots,
+    setLoadingSlots,
+  ] = useState(false);
+
+  const [
+    rescheduling,
+    setRescheduling,
+  ] = useState(false);
+
+  const [
+    rescheduleError,
+    setRescheduleError,
+  ] = useState("");
+
   useEffect(() => {
     const fetchAppointments = async () => {
       const token =
@@ -220,6 +258,18 @@ const PatientDashboard = () => {
           )
       );
 
+      /*
+       * Si por algún motivo estaba abierto
+       * el formulario de reagendamiento de
+       * esta misma cita, lo cerramos.
+       */
+      if (
+        reschedulingAppointmentId ===
+        appointmentId
+      ) {
+        closeReschedule();
+      }
+
       alert(
         "Cita cancelada correctamente."
       );
@@ -231,6 +281,288 @@ const PatientDashboard = () => {
 
       alert(message);
     }
+  };
+
+  /*
+   * Abrir el formulario de reagendamiento.
+   *
+   * No modificamos ni cancelamos la cita
+   * en este momento.
+   */
+  const openReschedule = (
+    appointmentId: string
+  ) => {
+    setReschedulingAppointmentId(
+      appointmentId
+    );
+
+    setRescheduleDate("");
+    setRescheduleTime("");
+    setAvailableSlots([]);
+    setRescheduleError("");
+  };
+
+  /*
+   * Cerrar el formulario sin modificar
+   * la cita existente.
+   */
+  const closeReschedule = () => {
+    setReschedulingAppointmentId(null);
+    setRescheduleDate("");
+    setRescheduleTime("");
+    setAvailableSlots([]);
+    setRescheduleError("");
+    setLoadingSlots(false);
+    setRescheduling(false);
+  };
+
+  /*
+   * Obtener los horarios disponibles
+   * cuando el paciente selecciona una fecha.
+   */
+  const handleRescheduleDateChange = async (
+    appointment: Appointment,
+    selectedDate: string
+  ) => {
+    setRescheduleDate(selectedDate);
+    setRescheduleTime("");
+    setAvailableSlots([]);
+    setRescheduleError("");
+
+    if (!selectedDate) {
+      return;
+    }
+
+    /*
+     * Interpretamos la fecha a mediodía para
+     * evitar desplazamientos de día por zona
+     * horaria en el navegador.
+     */
+    const selected =
+      new Date(
+        `${selectedDate}T12:00:00`
+      );
+
+    if (
+      Number.isNaN(
+        selected.getTime()
+      )
+    ) {
+      setRescheduleError(
+        "La fecha seleccionada no es válida."
+      );
+
+      return;
+    }
+
+    const day =
+      selected.getDay();
+
+    /*
+     * Domingo cerrado.
+     */
+    if (day === 0) {
+      setRescheduleError(
+        "No hay atención los domingos."
+      );
+
+      return;
+    }
+
+    /*
+     * Las citas presenciales solamente
+     * pueden mantenerse en jueves o viernes.
+     */
+    if (
+      appointment.modality ===
+        "presencial" &&
+      day !== 4 &&
+      day !== 5
+    ) {
+      setRescheduleError(
+        "Las sesiones presenciales solo están disponibles los jueves y viernes."
+      );
+
+      return;
+    }
+
+    try {
+      setLoadingSlots(true);
+
+      const response = await fetch(
+        `http://localhost:4000/api/appointments/available/${selectedDate}`
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.message ||
+            "No fue posible obtener los horarios disponibles."
+        );
+      }
+
+      if (!Array.isArray(data)) {
+        throw new Error(
+          "El servidor devolvió un formato de horarios inválido."
+        );
+      }
+
+      setAvailableSlots(data);
+
+      if (data.length === 0) {
+        setRescheduleError(
+          "No hay horarios disponibles para esta fecha."
+        );
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "No fue posible obtener los horarios disponibles.";
+
+      setRescheduleError(message);
+    } finally {
+      setLoadingSlots(false);
+    }
+  };
+
+  /*
+   * Confirmar el reagendamiento.
+   *
+   * Recién aquí se modifica la cita
+   * en la base de datos.
+   */
+  const handleRescheduleAppointment =
+    async (
+      appointment: Appointment
+    ) => {
+      const token =
+        localStorage.getItem(
+          "clientToken"
+        );
+
+      if (!token) {
+        alert(
+          "Debes iniciar sesión."
+        );
+
+        return;
+      }
+
+      if (
+        !rescheduleDate ||
+        !rescheduleTime
+      ) {
+        setRescheduleError(
+          "Selecciona una nueva fecha y un horario."
+        );
+
+        return;
+      }
+
+      const confirmReschedule =
+        window.confirm(
+          `¿Quieres cambiar tu cita al ${rescheduleDate} a las ${rescheduleTime}?`
+        );
+
+      if (!confirmReschedule) {
+        return;
+      }
+
+      try {
+        setRescheduling(true);
+        setRescheduleError("");
+
+        const response = await fetch(
+          `http://localhost:4000/api/appointments/${appointment._id}/reschedule`,
+          {
+            method: "PATCH",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+
+              Authorization:
+                `Bearer ${token}`,
+            },
+
+            body: JSON.stringify({
+              date: rescheduleDate,
+              time: rescheduleTime,
+            }),
+          }
+        );
+
+        const data =
+          await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data.message ||
+              "No fue posible reagendar la cita."
+          );
+        }
+
+        /*
+         * Actualizamos inmediatamente la cita
+         * mostrada en el portal.
+         *
+         * El backend devuelve la cita ya
+         * modificada.
+         */
+        setAppointments(
+          (previousAppointments) =>
+            previousAppointments.map(
+              (currentAppointment) =>
+                currentAppointment._id ===
+                appointment._id
+                  ? {
+                      ...currentAppointment,
+                      ...data.appointment,
+                    }
+                  : currentAppointment
+            )
+        );
+
+        closeReschedule();
+
+        alert(
+          data.message ||
+            "Cita reagendada correctamente. Está pendiente de nueva confirmación."
+        );
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "No fue posible reagendar la cita.";
+
+        setRescheduleError(message);
+      } finally {
+        setRescheduling(false);
+      }
+    };
+
+  /*
+   * Fecha mínima permitida por el input.
+   */
+  const getTodayString = () => {
+    const today = new Date();
+
+    const year =
+      today.getFullYear();
+
+    const month =
+      String(
+        today.getMonth() + 1
+      ).padStart(2, "0");
+
+    const day =
+      String(
+        today.getDate()
+      ).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
   };
 
   const upcoming =
@@ -258,6 +590,10 @@ const PatientDashboard = () => {
   }) => {
     const appointmentDate =
       parseISO(apt.date);
+
+    const isRescheduling =
+      reschedulingAppointmentId ===
+      apt._id;
 
     return (
       <motion.div
@@ -362,10 +698,21 @@ const PatientDashboard = () => {
             <Button
               size="sm"
               variant="outline"
+              onClick={() => {
+                if (isRescheduling) {
+                  closeReschedule();
+                } else {
+                  openReschedule(
+                    apt._id
+                  );
+                }
+              }}
             >
               <RefreshCw className="mr-1 h-3 w-3" />
 
-              Reagendar
+              {isRescheduling
+                ? "Cerrar"
+                : "Reagendar"}
             </Button>
 
             <Button
@@ -382,6 +729,138 @@ const PatientDashboard = () => {
 
               Cancelar
             </Button>
+          </div>
+        )}
+
+        {isRescheduling && (
+          <div className="mt-5 rounded-lg border bg-background-alt p-4">
+            <div className="mb-4">
+              <h3 className="text-sm font-semibold text-foreground">
+                Reagendar cita
+              </h3>
+
+              <p className="mt-1 text-xs text-muted-foreground">
+                Tu cita actual se mantendrá
+                hasta que confirmes el nuevo
+                horario.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label
+                  htmlFor={`reschedule-date-${apt._id}`}
+                  className="mb-1 block text-sm font-medium text-foreground"
+                >
+                  Nueva fecha
+                </label>
+
+                <input
+                  id={`reschedule-date-${apt._id}`}
+                  type="date"
+                  min={getTodayString()}
+                  value={
+                    rescheduleDate
+                  }
+                  onChange={(event) =>
+                    void handleRescheduleDateChange(
+                      apt,
+                      event.target.value
+                    )
+                  }
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground"
+                />
+              </div>
+
+              {loadingSlots && (
+                <p className="text-sm text-muted-foreground">
+                  Buscando horarios
+                  disponibles...
+                </p>
+              )}
+
+              {!loadingSlots &&
+                rescheduleDate &&
+                availableSlots.length >
+                  0 && (
+                  <div>
+                    <p className="mb-2 text-sm font-medium text-foreground">
+                      Horarios disponibles
+                    </p>
+
+                    <div className="flex flex-wrap gap-2">
+                      {availableSlots.map(
+                        (slot) => (
+                          <Button
+                            key={slot}
+                            type="button"
+                            size="sm"
+                            variant={
+                              rescheduleTime ===
+                              slot
+                                ? "default"
+                                : "outline"
+                            }
+                            onClick={() => {
+                              setRescheduleTime(
+                                slot
+                              );
+
+                              setRescheduleError(
+                                ""
+                              );
+                            }}
+                          >
+                            {slot}
+                          </Button>
+                        )
+                      )}
+                    </div>
+                  </div>
+                )}
+
+              {rescheduleError && (
+                <p className="text-sm text-destructive">
+                  {rescheduleError}
+                </p>
+              )}
+
+              <div className="flex flex-wrap gap-2 pt-1">
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={
+                    !rescheduleDate ||
+                    !rescheduleTime ||
+                    loadingSlots ||
+                    rescheduling
+                  }
+                  onClick={() =>
+                    void handleRescheduleAppointment(
+                      apt
+                    )
+                  }
+                >
+                  {rescheduling
+                    ? "Reagendando..."
+                    : "Confirmar nuevo horario"}
+                </Button>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={
+                    rescheduling
+                  }
+                  onClick={
+                    closeReschedule
+                  }
+                >
+                  Mantener cita actual
+                </Button>
+              </div>
+            </div>
           </div>
         )}
 

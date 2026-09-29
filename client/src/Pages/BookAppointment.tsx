@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -33,8 +34,9 @@ interface AppointmentDetails {
 }
 
 const BookAppointment = () => {
+  const navigate = useNavigate();
+
   const [step, setStep] = useState(0);
-  
 
   const [appointmentDetails, setAppointmentDetails] =
     useState<AppointmentDetails | null>(null);
@@ -52,45 +54,49 @@ const BookAppointment = () => {
   const [availableSlots, setAvailableSlots] = useState<string[]>([]);
 
   useEffect(() => {
-    if (!date) return;
-  
+    if (!date) {
+      return;
+    }
+
     const fetchSlots = async () => {
       try {
-        const formattedDate = format(date, "yyyy-MM-dd");
-  
+        const formattedDate = format(
+          date,
+          "yyyy-MM-dd"
+        );
+
         const response = await fetch(
           `http://localhost:4000/api/appointments/available/${formattedDate}`
         );
-  
+
         const data = await response.json();
-  
+
         if (!response.ok) {
           throw new Error(
-            data.message || "No fue posible obtener los horarios."
+            data.message ||
+              "No fue posible obtener los horarios."
           );
         }
-  
+
         if (!Array.isArray(data)) {
           throw new Error(
             "El servidor devolvió un formato de horarios inválido."
           );
         }
-  
+
         setAvailableSlots(data);
       } catch (error) {
         console.error(
           "Error al obtener horarios disponibles:",
           error
         );
-  
+
         setAvailableSlots([]);
       }
     };
-  
+
     void fetchSlots();
   }, [date]);
-
-
 
   const stepLabels = [
     "Modalidad",
@@ -98,7 +104,6 @@ const BookAppointment = () => {
     "Confirmación",
   ];
 
-  
   const isDateDisabled = (day: Date): boolean => {
     const isPast = isBefore(
       day,
@@ -111,18 +116,21 @@ const BookAppointment = () => {
 
     const dayOfWeek = day.getDay();
 
+    // Domingo: no hay atención.
+    if (dayOfWeek === 0) {
+      return true;
+    }
+
+    // Presencial: únicamente jueves y viernes.
     if (modality === "presencial") {
-      const isThursday = dayOfWeek === 4;
-      const isFriday = dayOfWeek === 5;
+      const isInPersonDay =
+        dayOfWeek === 4 || dayOfWeek === 5;
 
-      return !isThursday && !isFriday;
+      return !isInPersonDay;
     }
 
-    if (modality === "online") {
-      return dayOfWeek === 0;
-    }
-
-    return dayOfWeek === 0;
+    // Online: lunes a sábado.
+    return false;
   };
 
   const handleModalitySelection = (
@@ -149,7 +157,14 @@ const BookAppointment = () => {
     const token = localStorage.getItem("clientToken");
 
     if (!token) {
-      alert("Debes iniciar sesión para agendar una cita.");
+      alert(
+        "Debes iniciar sesión para agendar una cita."
+      );
+
+      navigate("/login", {
+        replace: true,
+      });
+
       return;
     }
 
@@ -178,6 +193,35 @@ const BookAppointment = () => {
 
       const data = await response.json();
 
+      // Sesión expirada o token inválido.
+      if (
+        response.status === 401 &&
+        (
+          data.code === "TOKEN_EXPIRED" ||
+          data.code === "TOKEN_INVALID" ||
+          data.code === "TOKEN_MISSING"
+        )
+      ) {
+        localStorage.removeItem("clientToken");
+        localStorage.removeItem("clientUser");
+
+        alert(
+          data.code === "TOKEN_EXPIRED"
+            ? "Tu sesión ha expirado. Inicia sesión nuevamente."
+            : "Tu sesión ya no es válida. Inicia sesión nuevamente."
+        );
+
+        navigate("/login", {
+          replace: true,
+          state: {
+            from: "/agendar",
+          },
+        });
+
+        return;
+      }
+
+      // Otros errores del backend.
       if (!response.ok) {
         console.error(
           "Error detallado del backend:",
@@ -185,15 +229,14 @@ const BookAppointment = () => {
         );
 
         alert(
-          `Error del servidor: ${
-            data.message ||
-            JSON.stringify(data.errors || data)
-          }`
+          data.message ||
+            "No fue posible solicitar la cita."
         );
 
         return;
       }
 
+      // Cita creada correctamente.
       setAppointmentDetails(data);
       setStep(3);
     } catch (error) {
@@ -211,7 +254,8 @@ const BookAppointment = () => {
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-background-alt px-4 py-12">
       <div className="container mx-auto max-w-3xl">
-        {/* Indicador de pasos */}
+
+        {/* INDICADOR DE PASOS */}
         <div className="mb-8 flex items-center justify-center gap-2">
           {stepLabels.map((label, index) => (
             <div
@@ -258,6 +302,7 @@ const BookAppointment = () => {
         </div>
 
         <AnimatePresence mode="wait">
+
           {/* PASO 0: MODALIDAD */}
           {step === 0 && (
             <motion.div
@@ -289,7 +334,9 @@ const BookAppointment = () => {
                 <button
                   type="button"
                   onClick={() =>
-                    handleModalitySelection("presencial")
+                    handleModalitySelection(
+                      "presencial"
+                    )
                   }
                   className={`group rounded-xl border p-6 text-left transition-all hover:-translate-y-1 hover:shadow-lg ${
                     modality === "presencial"
@@ -313,7 +360,9 @@ const BookAppointment = () => {
                 <button
                   type="button"
                   onClick={() =>
-                    handleModalitySelection("online")
+                    handleModalitySelection(
+                      "online"
+                    )
                   }
                   className={`group rounded-xl border p-6 text-left transition-all hover:-translate-y-1 hover:shadow-lg ${
                     modality === "online"
@@ -382,6 +431,7 @@ const BookAppointment = () => {
                     onSelect={(selectedDate) => {
                       setDate(selectedDate);
                       setTime(null);
+                      setAvailableSlots([]);
                     }}
                     disabled={isDateDisabled}
                     locale={es}
@@ -406,23 +456,25 @@ const BookAppointment = () => {
 
                       {availableSlots.length > 0 ? (
                         <div className="grid grid-cols-3 gap-2">
-                          {availableSlots.map((slot) => (
-                            <button
-                              type="button"
-                              key={slot}
-                              onClick={() =>
-                                setTime(slot)
-                              }
-                              className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
-                                time === slot
-                                  ? "border-primary bg-primary text-primary-foreground"
-                                  : "bg-card text-foreground hover:border-secondary hover:bg-secondary/10"
-                              }`}
-                            >
-                              <Clock className="mr-1 inline h-3 w-3" />
-                              {slot}
-                            </button>
-                          ))}
+                          {availableSlots.map(
+                            (slot) => (
+                              <button
+                                type="button"
+                                key={slot}
+                                onClick={() =>
+                                  setTime(slot)
+                                }
+                                className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                                  time === slot
+                                    ? "border-primary bg-primary text-primary-foreground"
+                                    : "bg-card text-foreground hover:border-secondary hover:bg-secondary/10"
+                                }`}
+                              >
+                                <Clock className="mr-1 inline h-3 w-3" />
+                                {slot}
+                              </button>
+                            )
+                          )}
                         </div>
                       ) : (
                         <p className="text-sm text-muted-foreground">
@@ -584,79 +636,79 @@ const BookAppointment = () => {
           )}
 
           {/* PASO 3: SOLICITUD CREADA */}
-          {step === 3 && appointmentDetails && (
-            <motion.div
-              key="success"
-              initial={{
-                opacity: 0,
-                scale: 0.95,
-              }}
-              animate={{
-                opacity: 1,
-                scale: 1,
-              }}
-              exit={{
-                opacity: 0,
-                scale: 0.95,
-              }}
-              className="space-y-4 rounded-xl border border-muted bg-white p-8 text-center shadow-sm"
-            >
-              <CheckCircle2 className="mx-auto h-16 w-16 text-green-500" />
+          {step === 3 &&
+            appointmentDetails && (
+              <motion.div
+                key="success"
+                initial={{
+                  opacity: 0,
+                  scale: 0.95,
+                }}
+                animate={{
+                  opacity: 1,
+                  scale: 1,
+                }}
+                exit={{
+                  opacity: 0,
+                  scale: 0.95,
+                }}
+                className="space-y-4 rounded-xl border border-muted bg-white p-8 text-center shadow-sm"
+              >
+                <CheckCircle2 className="mx-auto h-16 w-16 text-green-500" />
 
-              <h2 className="text-2xl font-bold text-gray-900">
-                Cita solicitada correctamente
-              </h2>
+                <h2 className="text-2xl font-bold text-gray-900">
+                  Cita solicitada correctamente
+                </h2>
 
-              <p className="text-muted-foreground">
-                Tu solicitud fue registrada para el día{" "}
-                <strong>
-                  {date
-                    ? format(
-                        date,
-                        "dd 'de' MMMM, yyyy",
-                        {
-                          locale: es,
-                        }
-                      )
-                    : ""}
-                </strong>{" "}
-                a las <strong>{time}</strong> en modalidad{" "}
-                <strong>
-                  {modality === "online"
-                    ? "En línea"
-                    : "Presencial"}
-                </strong>
-                .
-              </p>
-
-              <p className="text-sm text-muted-foreground">
-                Estado actual:{" "}
-                <strong className="text-foreground">
-                  Pendiente de confirmación
-                </strong>
-                .
-              </p>
-
-              {modality === "online" && (
-                <p className="text-sm text-muted-foreground">
-                  Una vez confirmada, recibirás la información para conectarte
-                  a la sesión.
+                <p className="text-muted-foreground">
+                  Tu solicitud fue registrada para el día{" "}
+                  <strong>
+                    {date
+                      ? format(
+                          date,
+                          "dd 'de' MMMM, yyyy",
+                          {
+                            locale: es,
+                          }
+                        )
+                      : ""}
+                  </strong>{" "}
+                  a las <strong>{time}</strong> en modalidad{" "}
+                  <strong>
+                    {modality === "online"
+                      ? "En línea"
+                      : "Presencial"}
+                  </strong>
+                  .
                 </p>
-              )}
 
-              <div className="pt-4">
-                <Button
-                  className="mt-2"
-                  variant="outline"
-                  onClick={() =>
-                    window.location.reload()
-                  }
-                >
-                  Agendar otra cita
-                </Button>
-              </div>
-            </motion.div>
-          )}
+                <p className="text-sm text-muted-foreground">
+                  Estado actual:{" "}
+                  <strong className="text-foreground">
+                    Pendiente de confirmación
+                  </strong>
+                  .
+                </p>
+
+                {modality === "online" && (
+                  <p className="text-sm text-muted-foreground">
+                    Una vez confirmada, recibirás la información para conectarte a la sesión.
+                  </p>
+                )}
+
+                <div className="pt-4">
+                  <Button
+                    className="mt-2"
+                    variant="outline"
+                    onClick={() =>
+                      window.location.reload()
+                    }
+                  >
+                    Agendar otra cita
+                  </Button>
+                </div>
+              </motion.div>
+            )}
         </AnimatePresence>
       </div>
     </div>
