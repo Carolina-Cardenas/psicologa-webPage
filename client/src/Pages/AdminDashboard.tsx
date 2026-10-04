@@ -175,6 +175,207 @@ const AdminDashboard = () => {
   const [blockReason, setBlockReason] =
     useState("");
 
+
+
+const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+const refreshAdminAppointments = async (token: string) => {
+  const response = await fetch(
+    "http://localhost:4000/api/appointments/admin/all",
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  const data = await response.json();
+
+  if (!response.ok || !Array.isArray(data)) {
+    throw new Error("No fue posible actualizar la lista de citas.");
+  }
+
+  setAppointments(data);
+};
+
+const handleCancelAppointment = async (
+  appointment: AdminAppointment
+) => {
+  const confirmed = window.confirm(
+    "¿Estás segura de que deseas cancelar esta cita? Se notificará al paciente."
+  );
+
+  if (!confirmed) return;
+
+  const token = localStorage.getItem("adminToken");
+
+  if (!token) {
+    alert("Debes iniciar sesión nuevamente.");
+    return;
+  }
+
+  setUpdatingId(appointment._id);
+
+  try {
+    const response = await fetch(
+      `http://localhost:4000/api/appointments/admin/${appointment._id}/cancel`,
+      {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        data.message || "No fue posible cancelar la cita."
+      );
+    }
+
+    await refreshAdminAppointments(token);
+    alert("Cita cancelada correctamente.");
+  } catch (error) {
+    alert(
+      error instanceof Error
+        ? error.message
+        : "Error al cancelar la cita."
+    );
+  } finally {
+    setUpdatingId(null);
+  }
+};
+
+const handleRescheduleAppointment = async (
+  appointment: AdminAppointment
+) => {
+  const date = window.prompt(
+    "Nueva fecha (AAAA-MM-DD):",
+    appointment.date.slice(0, 10)
+  );
+
+  if (date === null) return;
+
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+    !isValid(parseISO(date)) ||
+    format(parseISO(date), "yyyy-MM-dd") !== date
+  ) {
+    alert("Ingresa una fecha válida en formato AAAA-MM-DD.");
+    return;
+  }
+
+  const day = parseISO(date).getDay();
+
+  if (
+    day === 0 ||
+    (appointment.modality === "presencial" &&
+      ![4, 5].includes(day))
+  ) {
+    alert(
+      "Selecciona un día permitido para esta modalidad."
+    );
+    return;
+  }
+
+  const token = localStorage.getItem("adminToken");
+
+  if (!token) {
+    alert("Debes iniciar sesión nuevamente.");
+    return;
+  }
+
+  setUpdatingId(appointment._id);
+
+  try {
+    const slotsResponse = await fetch(
+      `http://localhost:4000/api/appointments/available/${date}`
+    );
+
+    const slotsData = await slotsResponse.json();
+
+    if (!slotsResponse.ok) {
+      throw new Error(
+        slotsData.message || "No se pudieron consultar los horarios."
+      );
+    }
+
+    const rawSlots = Array.isArray(slotsData)
+      ? slotsData
+      : slotsData.availableSlots ?? slotsData.slots ?? [];
+
+    const slots: string[] = Array.isArray(rawSlots)
+      ? rawSlots
+          .map((slot: unknown) =>
+            typeof slot === "string"
+              ? slot
+              : slot &&
+                  typeof slot === "object" &&
+                  "time" in slot
+                ? String(slot.time)
+                : ""
+          )
+          .filter(Boolean)
+      : [];
+
+    if (slots.length === 0) {
+      alert("No hay horarios disponibles para esa fecha.");
+      return;
+    }
+
+    const time = window.prompt(
+      `Horarios disponibles:\n${slots.join(", ")}\n\nEscribe el horario exacto (HH:mm):`
+    );
+
+    if (time === null) return;
+
+    const selectedTime = time.trim();
+
+    if (!slots.includes(selectedTime)) {
+      alert("Selecciona uno de los horarios disponibles.");
+      return;
+    }
+
+    const response = await fetch(
+      `http://localhost:4000/api/appointments/admin/${appointment._id}/reschedule`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          date,
+          time: selectedTime,
+        }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        data.message || "No fue posible reagendar la cita."
+      );
+    }
+
+    await refreshAdminAppointments(token);
+    alert("Cita reagendada correctamente.");
+  } catch (error) {
+    alert(
+      error instanceof Error
+        ? error.message
+        : "Error al reagendar la cita."
+    );
+  } finally {
+    setUpdatingId(null);
+  }
+};
+
+
+
   useEffect(() => {
     const fetchAppointments = async () => {
       const token =
@@ -238,6 +439,9 @@ const AdminDashboard = () => {
 
     void fetchAppointments();
   }, []);
+
+
+
 
   const resetOnlineConfirmationForm = () => {
     setAppointmentToConfirm(null);
@@ -1109,23 +1313,28 @@ const AdminDashboard = () => {
                             {appointment.status ===
                               "confirmada" && (
                               <div className="flex gap-1">
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-8 w-8"
-                                  title="Reagendar"
-                                >
-                                  <RefreshCw className="h-4 w-4" />
-                                </Button>
+                               
+<Button
+  size="icon"
+  variant="ghost"
+  className="h-8 w-8"
+  title="Reagendar"
+  disabled={updatingId === appointment._id}
+  onClick={() => handleRescheduleAppointment(appointment)}
+>
+  <RefreshCw className="h-4 w-4" />
+</Button>
 
                                 <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-8 w-8 text-destructive"
-                                  title="Cancelar"
-                                >
-                                  <XCircle className="h-4 w-4" />
-                                </Button>
+  size="icon"
+  variant="ghost"
+  className="h-8 w-8 text-destructive"
+  title="Cancelar"
+  disabled={updatingId === appointment._id}
+  onClick={() => handleCancelAppointment(appointment)}
+>
+  <XCircle className="h-4 w-4" />
+</Button>
                               </div>
                             )}
                           </div>
