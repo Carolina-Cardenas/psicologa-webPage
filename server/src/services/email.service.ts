@@ -372,4 +372,168 @@ export const sendAdminResetPasswordEmail = async (
       "No fue posible enviar el correo de recuperación."
     );
   }
+}
+
+  /**
+ * Enviar correo al paciente cuando la psicóloga
+ * cancela una cita desde administración.
+ */
+export const sendAppointmentCancelledByAdminEmail = async (
+  email: string,
+  nombre: string,
+  date: string,
+  time: string,
+  modality: "online" | "presencial"
+): Promise<void> => {
+  const modalityLabel =
+    modality === "online"
+      ? "En línea"
+      : "Presencial";
+
+  const { error } = await resend.emails.send({
+    from: FROM_EMAIL,
+    to: email,
+    subject: "Tu cita ha sido cancelada",
+    html: `
+      <p>Hola ${nombre},</p>
+
+      <p>
+        Tu cita ha sido cancelada por la psicóloga.
+      </p>
+
+      <p>
+        <strong>Fecha:</strong> ${date}
+      </p>
+
+      <p>
+        <strong>Hora:</strong> ${time}
+      </p>
+
+      <p>
+        <strong>Modalidad:</strong> ${modalityLabel}
+      </p>
+
+      <p>
+        El horario ha quedado disponible nuevamente.
+      </p>
+    `,
+  });
+
+  if (error) {
+    console.error(
+      "Error enviando correo de cancelación al paciente:",
+      error
+    );
+
+    throw new Error(
+      "No fue posible enviar el correo de cancelación."
+    );
+  }
 };
+
+/**
+ * Enviar correo al paciente cuando la psicóloga
+ * reagenda una cita desde administración.
+ */
+export const sendAppointmentRescheduledByAdminEmail = async (
+  email: string,
+  nombre: string,
+  date: string,
+  time: string,
+  modality: "online" | "presencial",
+  videoPlatform?: string | null,
+  videoLink?: string | null
+): Promise<void> => {
+  const modalityLabel =
+    modality === "online"
+      ? "En línea"
+      : "Presencial";
+
+  let onlineInformation = "";
+
+  if (
+    modality === "online" &&
+    videoPlatform === "whatsapp"
+  ) {
+    onlineInformation = `
+      <p>
+        <strong>Plataforma:</strong> WhatsApp
+      </p>
+
+      <p>
+        La psicóloga se comunicará contigo por WhatsApp
+        al número registrado en tu cuenta.
+      </p>
+    `;
+  } else if (
+    modality === "online" &&
+    videoPlatform &&
+    videoLink
+  ) {
+    const platformLabels: Record<string, string> = {
+      zoom: "Zoom",
+      teams: "Microsoft Teams",
+      otro: "Otra plataforma",
+    };
+
+    const platformLabel =
+      platformLabels[videoPlatform] ??
+      videoPlatform;
+
+    onlineInformation = `
+      <p>
+        <strong>Plataforma:</strong> ${platformLabel}
+      </p>
+
+      <p>
+        <strong>Videollamada:</strong>
+        <a href="${videoLink}">
+          Ingresar a la sesión
+        </a>
+      </p>
+    `;
+  }
+
+  const { error } = await resend.emails.send({
+    from: FROM_EMAIL,
+    to: email,
+    subject: "Tu cita ha sido reagendada",
+    html: `
+      <p>Hola ${nombre},</p>
+
+      <p>
+        La psicóloga ha modificado el horario de tu cita.
+      </p>
+
+      <p>
+        <strong>Nueva fecha:</strong> ${date}
+      </p>
+
+      <p>
+        <strong>Nueva hora:</strong> ${time}
+      </p>
+
+      <p>
+        <strong>Modalidad:</strong> ${modalityLabel}
+      </p>
+
+      ${onlineInformation}
+
+      <p>
+        Tu cita continúa confirmada.
+      </p>
+    `,
+  });
+
+  if (error) {
+    console.error(
+      "Error enviando correo de reagendamiento al paciente:",
+      error
+    );
+
+    throw new Error(
+      "No fue posible enviar el correo de reagendamiento."
+    );
+  }
+};
+  

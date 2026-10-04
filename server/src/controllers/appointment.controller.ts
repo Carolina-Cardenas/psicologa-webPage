@@ -9,6 +9,8 @@ import {
   sendAppointmentCancellationNotificationToAdmin,
   sendAppointmentConfirmationEmail,
   sendNewAppointmentNotificationToAdmin,
+  sendAppointmentCancelledByAdminEmail,
+  sendAppointmentRescheduledByAdminEmail,
 } from "../services/email.service";
 
 const getDayRange = (dateStr: string) => {
@@ -611,662 +613,788 @@ export const cancelMyAppointment = async (
  * Se modifica la cita existente.
  * No se crea una segunda cita.
  */
-export const rescheduleMyAppointment =
-  async (
-    req: Request<{ id: string }>,
-    res: Response
-  ) => {
+export const rescheduleMyAppointment = async (
+  req: Request<{ id: string }>,
+  res: Response
+) => {
+  try {
+    const clientId = (req as any).user?.id;
+    const { id } = req.params;
+    const { date, time } = req.body;
+
+    if (!clientId) {
+      return res.status(401).json({
+        message: "Usuario no autenticado.",
+      });
+    }
+
+    const appointment = await Appointment.findOne({
+      _id: id,
+      clientId,
+    });
+
+    if (!appointment) {
+      return res.status(404).json({
+        message: "Cita no encontrada.",
+      });
+    }
+
+    if (appointment.status !== "confirmada") {
+      return res.status(400).json({
+        message: "Solo puedes reagendar una cita confirmada.",
+      });
+    }
+
+    if (
+      !canModifyAppointment(
+        appointment.date,
+        appointment.time
+      )
+    ) {
+      return res.status(400).json({
+        message:
+          "Esta cita ya no puede reagendarse en línea porque faltan 24 horas o menos. Contacta directamente con la psicóloga.",
+        code: "APPOINTMENT_CHANGE_DEADLINE",
+      });
+    }
+
+    const { start, end } = getDayRange(date);
+
+    if (
+      Number.isNaN(start.getTime()) ||
+      Number.isNaN(end.getTime())
+    ) {
+      return res.status(400).json({
+        message: "La fecha seleccionada no es válida.",
+      });
+    }
+
+    const startOfToday = new Date();
+    startOfToday.setUTCHours(0, 0, 0, 0);
+
+    if (start < startOfToday) {
+      return res.status(400).json({
+        message:
+          "No puedes reagendar una cita a una fecha pasada.",
+      });
+    }
+
+    const appointmentDay = start.getUTCDay();
+    const allowedSlots = getSlotsForDay(appointmentDay);
+
+    if (allowedSlots.length === 0) {
+      return res.status(400).json({
+        message: "No hay atención los domingos.",
+      });
+    }
+
+    if (!allowedSlots.includes(time)) {
+      return res.status(400).json({
+        message:
+          appointmentDay === 1
+            ? "Los lunes la atención comienza a las 12:00."
+            : "El horario seleccionado no está dentro del horario de atención.",
+      });
+    }
+
+    const isInPersonDay =
+      appointmentDay === 4 || appointmentDay === 5;
+
+    if (
+      appointment.modality === "presencial" &&
+      !isInPersonDay
+    ) {
+      return res.status(400).json({
+        message:
+          "Las sesiones presenciales solo están disponibles los jueves y viernes.",
+      });
+    }
+
+    const currentDate = appointment.date
+      .toISOString()
+      .slice(0, 10);
+
+    if (
+      currentDate === date &&
+      appointment.time === time
+    ) {
+      return res.status(400).json({
+        message:
+          "Selecciona una fecha u hora diferente a la cita actual.",
+      });
+    }
+
+    const existingAppointment =
+      await Appointment.findOne({
+        _id: {
+          $ne: appointment._id,
+        },
+        date: {
+          $gte: start,
+          $lte: end,
+        },
+        time,
+        status: {
+          $ne: "cancelada",
+        },
+      });
+
+    if (existingAppointment) {
+      return res.status(409).json({
+        message: "Este horario ya ha sido reservado.",
+      });
+    }
+
+    appointment.date = start;
+    appointment.time = time;
+
+    // Cuando el paciente reagenda,
+    // la psicóloga debe confirmar nuevamente.
+    appointment.status = "pendiente";
+    appointment.videoPlatform = null;
+    appointment.videoLink = null;
+
+    await appointment.save();
+
     try {
-      const clientId =
-        (req as any).user?.id;
+      const client = await Client.findById(clientId);
 
-      const { id } = req.params;
+      const adminEmail =
+        process.env.ADMIN_NOTIFICATION_EMAIL;
 
-      const { date, time } = req.body;
+      if (client && adminEmail) {
+        const patientName =
+          `${client.nombre} ${client.apellidos}`.trim();
 
-      if (!clientId) {
-        return res.status(401).json({
-          message:
-            "Usuario no autenticado.",
-        });
-      }
-
-      const appointment =
-        await Appointment.findOne({
-          _id: id,
-          clientId,
-        });
-
-      if (!appointment) {
-        return res.status(404).json({
-          message:
-            "Cita no encontrada.",
-        });
-      }
-
-      /**
-       * Solo las citas confirmadas pueden
-       * reagendarse desde el portal.
-       */
-      if (
-        appointment.status !==
-        "confirmada"
-      ) {
-        return res.status(400).json({
-          message:
-            "Solo puedes reagendar una cita confirmada.",
-        });
-      }
-
-      /**
-       * REGLA DE 24 HORAS.
-       *
-       * Se comprueba la cita actual antes
-       * de modificarla.
-       */
-      if (
-        !canModifyAppointment(
-          appointment.date,
-          appointment.time
-        )
-      ) {
-        return res.status(400).json({
-          message:
-            "Esta cita ya no puede reagendarse en línea porque faltan 24 horas o menos. Contacta directamente con la psicóloga.",
-          code:
-            "APPOINTMENT_CHANGE_DEADLINE",
-        });
-      }
-
-      const { start, end } =
-        getDayRange(date);
-
-      if (
-        Number.isNaN(start.getTime()) ||
-        Number.isNaN(end.getTime())
-      ) {
-        return res.status(400).json({
-          message:
-            "La fecha seleccionada no es válida.",
-        });
-      }
-
-      /**
-       * No permitir fechas pasadas.
-       */
-      const startOfToday =
-        new Date();
-
-      startOfToday.setUTCHours(
-        0,
-        0,
-        0,
-        0
-      );
-
-      if (start < startOfToday) {
-        return res.status(400).json({
-          message:
-            "No puedes reagendar una cita a una fecha pasada.",
-        });
-      }
-
-      const appointmentDay =
-        start.getUTCDay();
-
-      const allowedSlots =
-        getSlotsForDay(
-          appointmentDay
-        );
-
-      /**
-       * Domingo cerrado.
-       */
-      if (allowedSlots.length === 0) {
-        return res.status(400).json({
-          message:
-            "No hay atención los domingos.",
-        });
-      }
-
-      /**
-       * Validar horario.
-       */
-      if (!allowedSlots.includes(time)) {
-        return res.status(400).json({
-          message:
-            appointmentDay === 1
-              ? "Los lunes la atención es de 12:00 a 19:00."
-              : "El horario seleccionado no está dentro del horario de atención.",
-        });
-      }
-
-      /**
-       * Si la cita es presencial,
-       * debe continuar siendo jueves o viernes.
-       */
-      const isInPersonDay =
-        appointmentDay === 4 ||
-        appointmentDay === 5;
-
-      if (
-        appointment.modality ===
-          "presencial" &&
-        !isInPersonDay
-      ) {
-        return res.status(400).json({
-          message:
-            "Las sesiones presenciales solo están disponibles los jueves y viernes.",
-        });
-      }
-
-      /**
-       * Evitar reagendar exactamente
-       * a la misma fecha y hora.
-       */
-      const currentDate =
-        appointment.date
-          .toISOString()
-          .slice(0, 10);
-
-      if (
-        currentDate === date &&
-        appointment.time === time
-      ) {
-        return res.status(400).json({
-          message:
-            "Selecciona una fecha u hora diferente a la cita actual.",
-        });
-      }
-
-      /**
-       * Comprobar disponibilidad.
-       *
-       * Excluimos la cita actual.
-       */
-      const existingAppointment =
-        await Appointment.findOne({
-          _id: {
-            $ne: appointment._id,
-          },
-          date: {
-            $gte: start,
-            $lte: end,
-          },
+        await sendNewAppointmentNotificationToAdmin(
+          adminEmail,
+          patientName,
+          date,
           time,
-          status: {
-            $ne: "cancelada",
-          },
-        });
-
-      if (existingAppointment) {
-        return res.status(409).json({
-          message:
-            "Este horario ya ha sido reservado.",
-        });
-      }
-
-      /**
-       * Mover la cita.
-       */
-      appointment.date = start;
-      appointment.time = time;
-
-      /**
-       * Después del reagendamiento vuelve
-       * a quedar pendiente.
-       */
-      appointment.status =
-        "pendiente";
-
-      /**
-       * La confirmación anterior deja
-       * de ser válida.
-       */
-      appointment.videoPlatform =
-        null;
-
-      appointment.videoLink =
-        null;
-
-      await appointment.save();
-
-      /**
-       * Avisar nuevamente a la psicóloga.
-       *
-       * Si falla el correo, no revertimos
-       * el reagendamiento.
-       */
-      try {
-        const client =
-          await Client.findById(
-            clientId
-          );
-
-        const adminEmail =
-          process.env
-            .ADMIN_NOTIFICATION_EMAIL;
-
-        if (client && adminEmail) {
-          const patientName =
-            `${client.nombre} ${client.apellidos}`.trim();
-
-          await sendNewAppointmentNotificationToAdmin(
-            adminEmail,
-            patientName,
-            date,
-            time,
-            appointment.modality
-          );
-        } else if (!adminEmail) {
-          console.warn(
-            "ADMIN_NOTIFICATION_EMAIL no está configurado. La cita fue reagendada, pero no se envió notificación al administrador."
-          );
-        }
-      } catch (emailError) {
-        console.error(
-          "La cita fue reagendada, pero no se pudo enviar la notificación al administrador:",
-          emailError
+          appointment.modality
+        );
+      } else if (!adminEmail) {
+        console.warn(
+          "ADMIN_NOTIFICATION_EMAIL no está configurado. La cita fue reagendada, pero no se envió notificación al administrador."
         );
       }
-
-      return res.status(200).json({
-        message:
-          "Cita reagendada correctamente. Está pendiente de nueva confirmación.",
-        appointment,
-      });
-    } catch (error: unknown) {
-      if (
-        typeof error === "object" &&
-        error !== null &&
-        "code" in error &&
-        (error as { code?: number })
-          .code === 11000
-      ) {
-        return res.status(409).json({
-          message:
-            "Este horario ya ha sido reservado.",
-        });
-      }
-
+    } catch (emailError) {
       console.error(
-        "Error al reagendar cita:",
-        error
+        "La cita fue reagendada, pero no se pudo enviar la notificación al administrador:",
+        emailError
       );
+    }
 
-      return res.status(500).json({
-        message:
-          "Error al reagendar la cita.",
+    return res.status(200).json({
+      message:
+        "Cita reagendada correctamente. Está pendiente de nueva confirmación.",
+      appointment,
+    });
+  } catch (error: unknown) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      (error as { code?: number }).code === 11000
+    ) {
+      return res.status(409).json({
+        message: "Este horario ya ha sido reservado.",
       });
     }
-  };
+
+    console.error(
+      "Error al reagendar cita:",
+      error
+    );
+
+    return res.status(500).json({
+      message: "Error al reagendar la cita.",
+    });
+  }
+};
 
 /**
- * Obtener todas las citas para administración.
+ * Cancelar una cita desde administración.
  */
-export const getAllAppointmentsForAdmin =
-  async (
-    req: Request,
-    res: Response
-  ) => {
-    try {
-      const appointments =
-        await Appointment.find()
-          .populate(
-            "clientId",
-            "nombre apellidos email telefono pais rut direccion"
-          )
-          .sort({
-            date: 1,
-            time: 1,
-          })
-          .lean();
+export const cancelAppointmentByAdmin = async (
+  req: Request<{ id: string }>,
+  res: Response
+) => {
+  try {
+    const { id } = req.params;
 
-      return res
-        .status(200)
-        .json(appointments);
-    } catch (error) {
-      console.error(
-        "Error al obtener citas para admin:",
-        error
-      );
+    const appointment =
+      await Appointment.findById(id);
 
-      return res.status(500).json({
-        message:
-          "Error al obtener las citas.",
+    if (!appointment) {
+      return res.status(404).json({
+        message: "Cita no encontrada.",
       });
     }
-  };
 
-/**
- * Obtener citas de una fecha para administración.
- */
-export const getAppointmentsByDate =
-  async (
-    req: Request<{
-      date: string;
-    }>,
-    res: Response
-  ) => {
-    try {
-      const { date } = req.params;
-
-      if (
-        !/^\d{4}-\d{2}-\d{2}$/.test(
-          date
-        )
-      ) {
-        return res.status(400).json({
-          message:
-            "Formato de fecha inválido.",
-        });
-      }
-
-      const { start, end } =
-        getDayRange(date);
-
-      if (
-        Number.isNaN(
-          start.getTime()
-        ) ||
-        Number.isNaN(
-          end.getTime()
-        )
-      ) {
-        return res.status(400).json({
-          message:
-            "Fecha inválida.",
-        });
-      }
-
-      const appointments =
-        await Appointment.find({
-          date: {
-            $gte: start,
-            $lte: end,
-          },
-        })
-          .populate(
-            "clientId",
-            "nombre apellidos email telefono pais rut direccion"
-          )
-          .sort({
-            time: 1,
-          })
-          .lean();
-
-      return res
-        .status(200)
-        .json(appointments);
-    } catch (error) {
-      console.error(
-        "Error al obtener citas:",
-        error
-      );
-
-      return res.status(500).json({
-        message:
-          "Error al obtener las citas de este día.",
+    if (appointment.status === "cancelada") {
+      return res.status(400).json({
+        message: "La cita ya está cancelada.",
       });
     }
-  };
 
-/**
- * Confirmar una cita desde administración.
- */
-export const confirmAppointment =
-  async (
-    req: Request<{
-      id: string;
-    }>,
-    res: Response
-  ) => {
+    if (appointment.status === "completada") {
+      return res.status(400).json({
+        message:
+          "No se puede cancelar una cita completada.",
+      });
+    }
+
+    appointment.status = "cancelada";
+
+    await appointment.save();
+
     try {
-      const { id } = req.params;
+      if (appointment.clientId) {
+        const client = await Client.findById(
+          appointment.clientId
+        );
 
-      const body = req.body ?? {};
-
-      const {
-        videoPlatform,
-        videoLink,
-      }: {
-        videoPlatform?:
-          | "zoom"
-          | "teams"
-          | "whatsapp"
-          | "otro";
-
-        videoLink?: string;
-      } = body;
-
-      const appointment =
-        await Appointment.findById(id);
-
-      if (!appointment) {
-        return res.status(404).json({
-          message:
-            "Cita no encontrada.",
-        });
-      }
-
-      /**
-       * Compatibilidad con citas antiguas
-       * sin paciente asociado.
-       */
-      if (!appointment.clientId) {
-        return res.status(409).json({
-          message:
-            "Esta es una cita antigua sin paciente asociado. Crea una nueva cita desde una cuenta de paciente para poder confirmarla.",
-        });
-      }
-
-      if (
-        appointment.status ===
-        "cancelada"
-      ) {
-        return res.status(400).json({
-          message:
-            "No se puede confirmar una cita cancelada.",
-        });
-      }
-
-      if (
-        appointment.status ===
-        "completada"
-      ) {
-        return res.status(400).json({
-          message:
-            "No se puede confirmar una cita completada.",
-        });
-      }
-
-      if (
-        appointment.status ===
-        "confirmada"
-      ) {
-        return res.status(400).json({
-          message:
-            "La cita ya está confirmada.",
-        });
-      }
-
-      /**
-       * Para citas online debe existir
-       * una plataforma.
-       */
-      if (
-        appointment.modality ===
-        "online"
-      ) {
-        const allowedPlatforms = [
-          "zoom",
-          "teams",
-          "whatsapp",
-          "otro",
-        ] as const;
-
-        if (
-          !videoPlatform ||
-          !allowedPlatforms.includes(
-            videoPlatform
-          )
-        ) {
-          return res.status(400).json({
-            message:
-              "Debes seleccionar la plataforma de videollamada.",
-          });
-        }
-
-        appointment.videoPlatform =
-          videoPlatform;
-
-        /**
-         * WhatsApp utiliza el teléfono
-         * registrado del paciente.
-         */
-        if (
-          videoPlatform ===
-          "whatsapp"
-        ) {
-          const client =
-            await Client.findById(
-              appointment.clientId
-            ).select("telefono");
-
-          if (
-            !client ||
-            !client.telefono?.trim()
-          ) {
-            return res.status(400).json({
-              message:
-                "El paciente no tiene un número de teléfono registrado para utilizar WhatsApp.",
-            });
-          }
-
-          appointment.videoLink =
-            null;
-        } else {
-          /**
-           * Zoom, Teams y Otra plataforma
-           * necesitan enlace.
-           */
-          const normalizedVideoLink =
-            videoLink?.trim();
-
-          if (!normalizedVideoLink) {
-            return res.status(400).json({
-              message:
-                "Debes ingresar el enlace de la videollamada.",
-            });
-          }
-
-          try {
-            const parsedUrl =
-              new URL(
-                normalizedVideoLink
-              );
-
-            if (
-              parsedUrl.protocol !==
-                "https:" &&
-              parsedUrl.protocol !==
-                "http:"
-            ) {
-              return res
-                .status(400)
-                .json({
-                  message:
-                    "El enlace debe utilizar HTTP o HTTPS.",
-                });
-            }
-          } catch {
-            return res.status(400).json({
-              message:
-                "El enlace de videollamada no es válido.",
-            });
-          }
-
-          appointment.videoLink =
-            normalizedVideoLink;
-        }
-      }
-
-      /**
-       * Las citas presenciales no necesitan
-       * plataforma ni enlace.
-       */
-      if (
-        appointment.modality ===
-        "presencial"
-      ) {
-        appointment.videoPlatform =
-          null;
-
-        appointment.videoLink =
-          null;
-      }
-
-      /**
-       * Confirmar primero en MongoDB.
-       */
-      appointment.status =
-        "confirmada";
-
-      await appointment.save();
-
-      /**
-       * Enviar correo al paciente.
-       *
-       * Si falla el correo, la cita continúa
-       * confirmada.
-       */
-      try {
-        const client =
-          await Client.findById(
-            appointment.clientId
-          );
-
-        if (!client) {
-          console.warn(
-            "La cita fue confirmada, pero no se encontró al paciente para enviar el correo."
-          );
-        } else {
+        if (client) {
           const appointmentDate =
             appointment.date
               .toISOString()
               .slice(0, 10);
 
-          await sendAppointmentConfirmationEmail(
+          await sendAppointmentCancelledByAdminEmail(
             client.email,
             client.nombre,
             appointmentDate,
             appointment.time,
+            appointment.modality
+          );
+        } else {
+          console.warn(
+            "La cita fue cancelada por el administrador, pero no se encontró al paciente."
+          );
+        }
+      }
+    } catch (emailError) {
+      console.error(
+        "La cita fue cancelada por el administrador, pero no se pudo enviar el correo al paciente:",
+        emailError
+      );
+    }
+
+    return res.status(200).json({
+      message: "Cita cancelada correctamente.",
+      appointment,
+    });
+  } catch (error) {
+    console.error(
+      "Error al cancelar cita desde administración:",
+      error
+    );
+
+    return res.status(500).json({
+      message: "Error al cancelar la cita.",
+    });
+  }
+};
+
+/**
+ * Reagendar una cita desde administración.
+ */
+export const rescheduleAppointmentByAdmin = async (
+  req: Request<{ id: string }>,
+  res: Response
+) => {
+  try {
+    const { id } = req.params;
+    const { date, time } = req.body;
+
+    const appointment =
+      await Appointment.findById(id);
+
+    if (!appointment) {
+      return res.status(404).json({
+        message: "Cita no encontrada.",
+      });
+    }
+
+    if (appointment.status === "cancelada") {
+      return res.status(400).json({
+        message:
+          "No se puede reagendar una cita cancelada.",
+      });
+    }
+
+    if (appointment.status === "completada") {
+      return res.status(400).json({
+        message:
+          "No se puede reagendar una cita completada.",
+      });
+    }
+
+    const { start, end } = getDayRange(date);
+
+    if (
+      Number.isNaN(start.getTime()) ||
+      Number.isNaN(end.getTime())
+    ) {
+      return res.status(400).json({
+        message: "La fecha seleccionada no es válida.",
+      });
+    }
+
+    const startOfToday = new Date();
+    startOfToday.setUTCHours(0, 0, 0, 0);
+
+    if (start < startOfToday) {
+      return res.status(400).json({
+        message:
+          "No se puede reagendar una cita a una fecha pasada.",
+      });
+    }
+
+    const appointmentDay = start.getUTCDay();
+    const allowedSlots = getSlotsForDay(appointmentDay);
+
+    if (allowedSlots.length === 0) {
+      return res.status(400).json({
+        message: "No hay atención los domingos.",
+      });
+    }
+
+    if (!allowedSlots.includes(time)) {
+      return res.status(400).json({
+        message:
+          appointmentDay === 1
+            ? "Los lunes la atención comienza a las 12:00."
+            : "El horario seleccionado no está dentro del horario de atención.",
+      });
+    }
+
+    const isInPersonDay =
+      appointmentDay === 4 || appointmentDay === 5;
+
+    if (
+      appointment.modality === "presencial" &&
+      !isInPersonDay
+    ) {
+      return res.status(400).json({
+        message:
+          "Las sesiones presenciales solo están disponibles los jueves y viernes.",
+      });
+    }
+
+    const currentDate = appointment.date
+      .toISOString()
+      .slice(0, 10);
+
+    if (
+      currentDate === date &&
+      appointment.time === time
+    ) {
+      return res.status(400).json({
+        message:
+          "Selecciona una fecha u hora diferente a la cita actual.",
+      });
+    }
+
+    const existingAppointment =
+      await Appointment.findOne({
+        _id: {
+          $ne: appointment._id,
+        },
+        date: {
+          $gte: start,
+          $lte: end,
+        },
+        time,
+        status: {
+          $ne: "cancelada",
+        },
+      });
+
+    if (existingAppointment) {
+      return res.status(409).json({
+        message: "Este horario ya ha sido reservado.",
+      });
+    }
+
+    appointment.date = start;
+    appointment.time = time;
+
+    // Como la psicóloga está haciendo el cambio,
+    // la cita continúa confirmada.
+    appointment.status = "confirmada";
+
+    await appointment.save();
+
+    try {
+      if (appointment.clientId) {
+        const client = await Client.findById(
+          appointment.clientId
+        );
+
+        if (client) {
+          await sendAppointmentRescheduledByAdminEmail(
+            client.email,
+            client.nombre,
+            date,
+            time,
             appointment.modality,
             appointment.videoPlatform,
             appointment.videoLink
           );
+        } else {
+          console.warn(
+            "La cita fue reagendada por el administrador, pero no se encontró al paciente."
+          );
         }
-      } catch (emailError) {
-        console.error(
-          "La cita fue confirmada, pero el correo de confirmación no pudo enviarse:",
-          emailError
-        );
       }
-
-      return res.status(200).json({
-        message:
-          "Cita confirmada correctamente.",
-        appointment,
-      });
-    } catch (error) {
+    } catch (emailError) {
       console.error(
-        "Error al confirmar cita:",
-        error
+        "La cita fue reagendada por el administrador, pero no se pudo enviar el correo al paciente:",
+        emailError
       );
+    }
 
-      return res.status(500).json({
-        message:
-          "Error al confirmar la cita.",
+    return res.status(200).json({
+      message: "Cita reagendada correctamente.",
+      appointment,
+    });
+  } catch (error: unknown) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      (error as { code?: number }).code === 11000
+    ) {
+      return res.status(409).json({
+        message: "Este horario ya ha sido reservado.",
       });
     }
-  };
+
+    console.error(
+      "Error al reagendar cita desde administración:",
+      error
+    );
+
+    return res.status(500).json({
+      message: "Error al reagendar la cita.",
+    });
+  }
+}
+/**
+ * Obtener todas las citas para administración.
+ */
+/**
+ * Obtener todas las citas para administración.
+ */
+export const getAllAppointmentsForAdmin = async (
+  req: Request,
+  res: Response
+) => {
+  try {
+    const appointments = await Appointment.find()
+      .populate(
+        "clientId",
+        "nombre apellidos email telefono pais rut direccion"
+      )
+      .sort({
+        date: 1,
+        time: 1,
+      })
+      .lean();
+
+    return res.status(200).json(appointments);
+  } catch (error) {
+    console.error(
+      "Error al obtener citas para admin:",
+      error
+    );
+
+    return res.status(500).json({
+      message: "Error al obtener las citas.",
+    });
+  }
+};
+
+/**
+ * Obtener citas de una fecha para administración.
+ */
+export const getAppointmentsByDate = async (
+  req: Request<{
+    date: string;
+  }>,
+  res: Response
+) => {
+  try {
+    const { date } = req.params;
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return res.status(400).json({
+        message: "Formato de fecha inválido.",
+      });
+    }
+
+    const { start, end } = getDayRange(date);
+
+    if (
+      Number.isNaN(start.getTime()) ||
+      Number.isNaN(end.getTime())
+    ) {
+      return res.status(400).json({
+        message: "Fecha inválida.",
+      });
+    }
+
+    const appointments = await Appointment.find({
+      date: {
+        $gte: start,
+        $lte: end,
+      },
+    })
+      .populate(
+        "clientId",
+        "nombre apellidos email telefono pais rut direccion"
+      )
+      .sort({
+        time: 1,
+      })
+      .lean();
+
+    return res.status(200).json(appointments);
+  } catch (error) {
+    console.error(
+      "Error al obtener citas:",
+      error
+    );
+
+    return res.status(500).json({
+      message:
+        "Error al obtener las citas de este día.",
+    });
+  }
+};
+
+/**
+ * Confirmar una cita desde administración.
+ */
+export const confirmAppointment = async (
+  req: Request<{
+    id: string;
+  }>,
+  res: Response
+) => {
+  try {
+    const { id } = req.params;
+
+    const body = req.body ?? {};
+
+    const {
+      videoPlatform,
+      videoLink,
+    }: {
+      videoPlatform?:
+        | "zoom"
+        | "teams"
+        | "whatsapp"
+        | "otro";
+      videoLink?: string;
+    } = body;
+
+    const appointment =
+      await Appointment.findById(id);
+
+    if (!appointment) {
+      return res.status(404).json({
+        message: "Cita no encontrada.",
+      });
+    }
+
+    /**
+     * Compatibilidad con citas antiguas
+     * sin paciente asociado.
+     */
+    if (!appointment.clientId) {
+      return res.status(409).json({
+        message:
+          "Esta es una cita antigua sin paciente asociado. Crea una nueva cita desde una cuenta de paciente para poder confirmarla.",
+      });
+    }
+
+    if (appointment.status === "cancelada") {
+      return res.status(400).json({
+        message:
+          "No se puede confirmar una cita cancelada.",
+      });
+    }
+
+    if (appointment.status === "completada") {
+      return res.status(400).json({
+        message:
+          "No se puede confirmar una cita completada.",
+      });
+    }
+
+    if (appointment.status === "confirmada") {
+      return res.status(400).json({
+        message: "La cita ya está confirmada.",
+      });
+    }
+
+    /**
+     * Para citas online debe existir
+     * una plataforma.
+     */
+    if (appointment.modality === "online") {
+      const allowedPlatforms = [
+        "zoom",
+        "teams",
+        "whatsapp",
+        "otro",
+      ] as const;
+
+      if (
+        !videoPlatform ||
+        !allowedPlatforms.includes(videoPlatform)
+      ) {
+        return res.status(400).json({
+          message:
+            "Debes seleccionar la plataforma de videollamada.",
+        });
+      }
+
+      appointment.videoPlatform =
+        videoPlatform;
+
+      /**
+       * WhatsApp utiliza el teléfono
+       * registrado del paciente.
+       */
+      if (videoPlatform === "whatsapp") {
+        const client = await Client.findById(
+          appointment.clientId
+        ).select("telefono");
+
+        if (
+          !client ||
+          !client.telefono?.trim()
+        ) {
+          return res.status(400).json({
+            message:
+              "El paciente no tiene un número de teléfono registrado para utilizar WhatsApp.",
+          });
+        }
+
+        appointment.videoLink = null;
+      } else {
+        /**
+         * Zoom, Teams y Otra plataforma
+         * necesitan enlace.
+         */
+        const normalizedVideoLink =
+          videoLink?.trim();
+
+        if (!normalizedVideoLink) {
+          return res.status(400).json({
+            message:
+              "Debes ingresar el enlace de la videollamada.",
+          });
+        }
+
+        try {
+          const parsedUrl = new URL(
+            normalizedVideoLink
+          );
+
+          if (
+            parsedUrl.protocol !== "https:" &&
+            parsedUrl.protocol !== "http:"
+          ) {
+            return res.status(400).json({
+              message:
+                "El enlace debe utilizar HTTP o HTTPS.",
+            });
+          }
+        } catch {
+          return res.status(400).json({
+            message:
+              "El enlace de videollamada no es válido.",
+          });
+        }
+
+        appointment.videoLink =
+          normalizedVideoLink;
+      }
+    }
+
+    /**
+     * Las citas presenciales no necesitan
+     * plataforma ni enlace.
+     */
+    if (appointment.modality === "presencial") {
+      appointment.videoPlatform = null;
+      appointment.videoLink = null;
+    }
+
+    /**
+     * Confirmar primero en MongoDB.
+     */
+    appointment.status = "confirmada";
+
+    await appointment.save();
+
+    /**
+     * Enviar correo al paciente.
+     *
+     * Si falla el correo, la cita continúa
+     * confirmada.
+     */
+    try {
+      const client = await Client.findById(
+        appointment.clientId
+      );
+
+      if (!client) {
+        console.warn(
+          "La cita fue confirmada, pero no se encontró al paciente para enviar el correo."
+        );
+      } else {
+        const appointmentDate =
+          appointment.date
+            .toISOString()
+            .slice(0, 10);
+
+        await sendAppointmentConfirmationEmail(
+          client.email,
+          client.nombre,
+          appointmentDate,
+          appointment.time,
+          appointment.modality,
+          appointment.videoPlatform,
+          appointment.videoLink
+        );
+      }
+    } catch (emailError) {
+      console.error(
+        "La cita fue confirmada, pero el correo de confirmación no pudo enviarse:",
+        emailError
+      );
+    }
+
+    return res.status(200).json({
+      message:
+        "Cita confirmada correctamente.",
+      appointment,
+    });
+  } catch (error) {
+    console.error(
+      "Error al confirmar cita:",
+      error
+    );
+
+    return res.status(500).json({
+      message:
+        "Error al confirmar la cita.",
+    });
+  }
+};

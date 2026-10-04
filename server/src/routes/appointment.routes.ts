@@ -6,6 +6,8 @@ import {
   getAvailableSlots,
   cancelMyAppointment,
   rescheduleMyAppointment,
+  cancelAppointmentByAdmin,
+  rescheduleAppointmentByAdmin,
   getAppointmentsByDate,
   getMyAppointments,
   getAllAppointmentsForAdmin,
@@ -36,30 +38,17 @@ const appointmentLimiter = rateLimit({
   },
 });
 
-// Cancelar cita propia
-router.patch(
-  "/:id/cancel",
-  protectRoute,
-  requireAccountType("client"),
-  cancelMyAppointment
-);
-
-// Reagendar cita propia
-router.patch(
-  "/:id/reschedule",
-  protectRoute,
-  requireAccountType("client"),
-  validateBody(rescheduleAppointmentSchemaVal),
-  rescheduleMyAppointment
-);
-
-// Horarios disponibles
+/**
+ * HORARIOS DISPONIBLES
+ */
 router.get(
   "/available/:date",
   getAvailableSlots
 );
 
-// Citas del paciente autenticado
+/**
+ * CITAS DEL PACIENTE
+ */
 router.get(
   "/mine",
   protectRoute,
@@ -67,7 +56,9 @@ router.get(
   getMyAppointments
 );
 
-// Crear cita
+/**
+ * CREAR CITA
+ */
 router.post(
   "/",
   protectRoute,
@@ -77,7 +68,30 @@ router.post(
   createAppointment
 );
 
-// Todas las citas para admin/psicóloga
+/**
+ * CANCELAR CITA - PACIENTE
+ */
+router.patch(
+  "/:id/cancel",
+  protectRoute,
+  requireAccountType("client"),
+  cancelMyAppointment
+);
+
+/**
+ * REAGENDAR CITA - PACIENTE
+ */
+router.patch(
+  "/:id/reschedule",
+  protectRoute,
+  requireAccountType("client"),
+  validateBody(rescheduleAppointmentSchemaVal),
+  rescheduleMyAppointment
+);
+
+/**
+ * TODAS LAS CITAS - ADMIN
+ */
 router.get(
   "/admin/all",
   protectRoute,
@@ -85,7 +99,34 @@ router.get(
   getAllAppointmentsForAdmin
 );
 
-// Confirmar cita
+/**
+ * CANCELAR CITA - ADMIN
+ *
+ * El admin NO está sujeto a la regla de 24 horas.
+ */
+router.patch(
+  "/admin/:id/cancel",
+  protectRoute,
+  requireRole("admin"),
+  cancelAppointmentByAdmin
+);
+
+/**
+ * REAGENDAR CITA - ADMIN
+ *
+ * El admin NO está sujeto a la regla de 24 horas.
+ */
+router.patch(
+  "/admin/:id/reschedule",
+  protectRoute,
+  requireRole("admin"),
+  validateBody(rescheduleAppointmentSchemaVal),
+  rescheduleAppointmentByAdmin
+);
+
+/**
+ * CONFIRMAR CITA - ADMIN
+ */
 router.patch(
   "/:id/confirm",
   protectRoute,
@@ -93,7 +134,13 @@ router.patch(
   confirmAppointment
 );
 
-// Citas por fecha para admin/psicóloga
+/**
+ * CITAS POR FECHA - ADMIN
+ *
+ * IMPORTANTE:
+ * esta ruta queda al final porque /:date
+ * es una ruta dinámica.
+ */
 router.get(
   "/:date",
   protectRoute,
